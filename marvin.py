@@ -13,7 +13,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-class MarvinDB:
+class MarvinAPI:
     """
     A class to handle interactions with the CouchDB server for Amazing Marvin data.
     This is part of the Model Context Protocol (MCP) server implementation.
@@ -21,13 +21,13 @@ class MarvinDB:
     
     def __init__(self, log_level=None):
         """
-        Initialize the MarvinDB with connection details from environment variables.
+        Initialize the MarvinAPI with connection details from environment variables.
         
         Args:
             log_level: Optional logging level (e.g., logging.DEBUG, logging.INFO)
         """
         # Set up logger
-        self.logger = logging.getLogger('MarvinDB')
+        self.logger = logging.getLogger('MarvinAPI')
         if log_level is not None:
             self.logger.setLevel(log_level)
         
@@ -49,7 +49,7 @@ class MarvinDB:
         # Initialize the session with auth credentials
         self.session = requests.Session()
         self.session.auth = (self.db_username, self.db_password)
-        self.logger.debug(f"Initialized MarvinDB with database: {self.db_name}")
+        self.logger.debug(f"Initialized MarvinAPI with database: {self.db_name}")
         
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
@@ -284,7 +284,7 @@ class MarvinDB:
         return json_str
 
 if __name__ == "__main__":
-    # Test the MarvinDB class
+    # Test the MarvinAPI class
     try:
         # You can change the log level here to adjust verbosity
         # Options: logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL
@@ -293,7 +293,7 @@ if __name__ == "__main__":
         # Configure root logger with command line handler if you want to see all logs
         logging.getLogger().setLevel(log_level)
         
-        marvin_db = MarvinDB(log_level=log_level)
+        marvin_db = MarvinAPI(log_level=log_level)
         connection_successful = marvin_db.test_connection()
         
         if connection_successful:
@@ -311,4 +311,4 @@ if __name__ == "__main__":
         else:
             logging.warning("Connection test failed.")
     except Exception as e:
-        logging.error(f"Error initializing MarvinDB: {e}", exc_info=True)
+        logging.error(f"Error initializing MarvinAPI: {e}", exc_info=True)
