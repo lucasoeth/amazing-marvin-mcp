@@ -237,6 +237,7 @@ class MarvinDB:
         root_categories = [cat for cat in categories if cat.get("parentId") == "root" or not cat.get("parentId")]
         # Find categories with parentId 'unassigned' (should go under Inbox)
         inbox_categories = [cat for cat in categories if cat.get("parentId") == "unassigned"]
+        inbox_tasks = [t for t in tasks if t.get("parentId") == "unassigned"]
 
         # Build the hierarchy with compact entries
         def process_category_recursive(category: Dict[str, Any]) -> Dict[str, Any]:
@@ -254,12 +255,13 @@ class MarvinDB:
 
         hierarchy = {rc.get("title", "Untitled Category"): process_category_recursive(rc) for rc in root_categories}
 
-        # Add synthetic Inbox for categories with parentId 'unassigned'
-        if inbox_categories:
+        # Add synthetic Inbox for categories and tasks with parentId 'unassigned'
+        if inbox_categories or inbox_tasks:
             inbox_dict = {}
-            for cat in inbox_categories:
-                title = cat.get("title", "Untitled Category")
-                inbox_dict[title] = process_category_recursive(cat)
+            if inbox_categories:
+                inbox_dict["sub"] = {cat.get("title", "Untitled Category"): process_category_recursive(cat) for cat in inbox_categories}
+            if inbox_tasks:
+                inbox_dict["tasks"] = [self._process_task(t) for t in inbox_tasks]
             hierarchy["Inbox"] = inbox_dict
 
         # Compact tasks formatting. Very important for the MCP server.
