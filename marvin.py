@@ -282,33 +282,3 @@ class MarvinAPI:
         pattern = r'^(\s*)"tasks": (\[[\s\S]*?\])'
         json_str = re.sub(pattern, compact_tasks, json_str, flags=re.MULTILINE)
         return json_str
-
-if __name__ == "__main__":
-    # Test the MarvinAPI class
-    try:
-        # You can change the log level here to adjust verbosity
-        # Options: logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL
-        log_level = logging.INFO  # Change this to adjust verbosity
-        
-        # Configure root logger with command line handler if you want to see all logs
-        logging.getLogger().setLevel(log_level)
-        
-        marvin_db = MarvinAPI(log_level=log_level)
-        connection_successful = marvin_db.test_connection()
-        
-        if connection_successful:
-            logging.info("Connection test passed.")
-            
-            # Test getting categories
-            try:
-                categories = marvin_db.get_categories()
-                logging.info(f"Found {len(categories)} categories")
-                if categories and log_level == logging.DEBUG:
-                    for category in categories[:3]:  # Show first 3 categories in debug mode
-                        logging.debug(f"Category: {category.get('title', 'Untitled')}")
-            except Exception as e:
-                logging.error(f"Error testing get_categories: {e}")
-        else:
-            logging.warning("Connection test failed.")
-    except Exception as e:
-        logging.error(f"Error initializing MarvinAPI: {e}", exc_info=True)
