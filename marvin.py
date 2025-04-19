@@ -211,11 +211,10 @@ class MarvinDB:
         
     def _process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         res = {"t": task.get("title", "Untitled Task")}
-        res["s"] = "done" if task.get("done") else "open"
         if task.get("dueDate"): res["due"] = task["dueDate"]
         est = self._convert_time_estimate(task.get("timeEstimate"))
         if est: res["est"] = est
-        if task.get("isStarred"): res["star"] = True
+        if task.get("isStarred"): res["pri"] = task.get("isStarred")
         return res
 
     def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
