@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import logging
+import re
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 
@@ -198,42 +199,70 @@ class MarvinDB:
                 self.logger.error(f"Response content: {e.response.text}")
             raise
 
+    def _convert_time_estimate(self, ms):
+        if not ms:
+            return None
+        hours = ms / (1000 * 60 * 60)
+        if hours < 1:
+            return f"{int(ms / (1000 * 60))}m"
+        if hours.is_integer():
+            return f"{int(hours)}h"
+        return f"{hours:.1f}h"
+        
+    def _process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        res = {"t": task.get("title", "Untitled Task")}
+        res["s"] = "done" if task.get("done") else "open"
+        if task.get("dueDate"): res["due"] = task["dueDate"]
+        est = self._convert_time_estimate(task.get("timeEstimate"))
+        if est: res["est"] = est
+        if task.get("isStarred"): res["star"] = True
+        return res
+
+    def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
+        data: Dict[str, Any] = {}
+        if cat.get("priority"): data["pri"] = cat["priority"]
+        if cat.get("dueDate"): data["due"] = cat["dueDate"]
+        return data
+
     def build_hierarchy_string(self) -> str:
         """
         Build the hierarchical structure of categories and tasks and return as a compact JSON string.
         This does not save to file, just returns the string.
         """
-        import re
-        import json
         # Fetch all categories and tasks
         categories = self.get_categories()
         tasks = self.get_tasks(include_done=False)
 
-        # Build a map of category id to category
-        category_map = {cat["_id"]: cat for cat in categories}
         # Find root categories (parentId is "root" or missing)
         root_categories = [cat for cat in categories if cat.get("parentId") == "root" or not cat.get("parentId")]
+        # Find categories with parentId 'unassigned' (should go under Inbox)
+        inbox_categories = [cat for cat in categories if cat.get("parentId") == "unassigned"]
 
-        # Build the hierarchy
-        def process_category_recursive(category):
-            cat_id = category["_id"]
-            cat_data = {k: v for k, v in category.items() if k != "_id"}
-            # Attach tasks for this category
-            cat_tasks = [task for task in tasks if task.get("parentId") == cat_id]
-            if cat_tasks:
-                cat_data["tasks"] = cat_tasks
-            # Find subcategories
-            subcats = [c for c in categories if c.get("parentId") == cat_id]
-            if subcats:
-                cat_data["sub"] = {sub["title"]: process_category_recursive(sub) for sub in subcats}
-            return cat_data
+        # Build the hierarchy with compact entries
+        def process_category_recursive(category: Dict[str, Any]) -> Dict[str, Any]:
+            cid = category["_id"]
+            cdata = self._process_category(category)
+            # Add tasks
+            tlist = [self._process_task(t) for t in tasks if t.get("parentId") == cid]
+            if tlist:
+                cdata["tasks"] = tlist
+            # Add subcategories
+            subs = [c for c in categories if c.get("parentId") == cid]
+            if subs:
+                cdata["sub"] = {s.get("title", "Untitled"): process_category_recursive(s) for s in subs}
+            return cdata
 
-        hierarchy = {}
-        for root_cat in root_categories:
-            title = root_cat.get("title", "Untitled Category")
-            hierarchy[title] = process_category_recursive(root_cat)
+        hierarchy = {rc.get("title", "Untitled Category"): process_category_recursive(rc) for rc in root_categories}
 
-        # Compact tasks formatting (like dump_hierarchy_with_compact_tasks)
+        # Add synthetic Inbox for categories with parentId 'unassigned'
+        if inbox_categories:
+            inbox_dict = {}
+            for cat in inbox_categories:
+                title = cat.get("title", "Untitled Category")
+                inbox_dict[title] = process_category_recursive(cat)
+            hierarchy["Inbox"] = inbox_dict
+
+        # Compact tasks formatting. Very important for the MCP server.
         json_str = json.dumps(hierarchy, indent=2)
         def compact_tasks(match):
             tasks = json.loads(match.group(2))
