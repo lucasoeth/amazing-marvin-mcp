@@ -478,22 +478,3 @@ class MarvinAdapter:
         }
 
         return response
-
-    def test_connection(self) -> Dict[str, str]:
-        """
-        Test the connection to the Amazing Marvin CouchDB server.
-
-        Returns:
-            Dictionary with status and message
-        """
-        success = self.api.test_connection()
-        if success:
-            return {
-                "status": "success",
-                "message": "Connection to Amazing Marvin database successful"
-            }
-        else:
-            return {
-                "status": "failure",
-                "message": "Connection to Amazing Marvin database failed"
-            }
