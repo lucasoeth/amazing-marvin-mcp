@@ -343,6 +343,51 @@ class MarvinAdapter:
             "message": f"Task '{title}' created successfully with ID {friendly_id}"
         }
     
+    def create_project(self, title: str, parent_id: str = "unassigned",
+                      due_date: Optional[str] = None, priority: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new project with LLM-friendly parameters.
+        
+        Args:
+            title: The title of the project
+            parent_id: Optional friendly ID (p1) or UUID of the parent project
+            due_date: Optional due date for the project (YYYY-MM-DD)
+            priority: Optional priority level (1-3, with 3 being highest)
+            
+        Returns:
+            Dictionary with the created project info and its friendly ID
+        """
+        # Convert parent_id from friendly ID if needed
+        real_parent_id = parent_id
+        if parent_id and parent_id.startswith('p'):
+            converted_id = self.get_real_id(parent_id)
+            if converted_id:
+                real_parent_id = converted_id
+        
+        # Create the project using the API
+        api_result = self.api.create_project(
+            title=title,
+            parent_id=real_parent_id,
+            due_date=due_date,
+            priority=priority
+        )
+        
+        # Get the project ID and assign a friendly ID
+        project_id = api_result.get("id", "")
+        friendly_id = self._get_friendly_project_id(project_id)
+        
+        # Return LLM-friendly result
+        return {
+            "project": {
+                "title": title,
+                "id": friendly_id,
+                "parent_id": parent_id,
+                "due_date": due_date,
+                "priority": priority
+            },
+            "message": f"Project '{title}' created successfully with ID {friendly_id}"
+        }
+    
     def update_task(self, task_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update a task using its friendly ID or UUID.

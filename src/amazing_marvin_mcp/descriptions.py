@@ -52,6 +52,12 @@ You can create tasks with various properties and place them in specific projects
 Time estimates can be specified in human-readable format like "30m", "1.5h", or "1h 30m".
 """
 
+CREATE_PROJECT_DESCRIPTION = """Create a new project in Amazing Marvin.
+
+You can create projects with various properties and place them within other projects using friendly IDs.
+Projects can contain tasks and other subprojects.
+"""
+
 UPDATE_TASK_DESCRIPTION = """Update an existing task in Amazing Marvin.
 
 You can update any properties of a task using its friendly ID (t1, t2, etc.).
@@ -92,6 +98,29 @@ CREATE_TASK_SCHEMA = {
         "time_estimate": {
             "type": "string",
             "description": "Optional time estimate in human-readable format (e.g., '30m', '1.5h', '1h 30m')"
+        }
+    },
+    "required": ["title"]
+}
+
+CREATE_PROJECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "The title of the project"
+        },
+        "parent_id": {
+            "type": "string",
+            "description": "Friendly ID of the parent project (p1, p2, etc.). Defaults to the Inbox."
+        },
+        "due_date": {
+            "type": "string",
+            "description": "Optional due date for the project (YYYY-MM-DD)"
+        },
+        "priority": {
+            "type": "string",
+            "description": "Optional priority level (1-3, with 3 being highest)"
         }
     },
     "required": ["title"]

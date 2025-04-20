@@ -6,8 +6,9 @@ import json
 from .adapter import MarvinAdapter
 from .descriptions import (
     LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
-    UPDATE_TASK_DESCRIPTION, TEST_CONNECTION_DESCRIPTION,
-    LIST_TASKS_SCHEMA, CREATE_TASK_SCHEMA, 
+    CREATE_PROJECT_DESCRIPTION, UPDATE_TASK_DESCRIPTION, 
+    TEST_CONNECTION_DESCRIPTION, LIST_TASKS_SCHEMA, 
+    CREATE_TASK_SCHEMA, CREATE_PROJECT_SCHEMA,
     UPDATE_TASK_SCHEMA, TEST_CONNECTION_SCHEMA
 )
 
@@ -54,6 +55,33 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
             day=day,
             due_date=due_date,
             time_estimate=time_estimate
+        )
+        
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+
+async def handle_create_project(arguments: dict) -> list[types.TextContent]:
+    """
+    Handle the create_project tool. Creates a new project in Amazing Marvin.
+    """
+    title = arguments.get("title", "")
+    parent_id = arguments.get("parent_id", "unassigned")
+    due_date = arguments.get("due_date", None)
+    priority = arguments.get("priority", None)
+    
+    if not title:
+        error_msg = {"error": "Title is required"}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    
+    try:
+        # Use the adapter to create the project with LLM-friendly parameters
+        result = marvin_adapter.create_project(
+            title=title,
+            parent_id=parent_id,
+            due_date=due_date,
+            priority=priority
         )
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
@@ -115,6 +143,11 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema=CREATE_TASK_SCHEMA
         ),
         types.Tool(
+            name="create_project",
+            description=CREATE_PROJECT_DESCRIPTION,
+            inputSchema=CREATE_PROJECT_SCHEMA
+        ),
+        types.Tool(
             name="update_task",
             description=UPDATE_TASK_DESCRIPTION,
             inputSchema=UPDATE_TASK_SCHEMA
@@ -136,6 +169,8 @@ async def call_tool(
         return await handle_list_tasks(arguments)
     elif name == "create_task":
         return await handle_create_task(arguments)
+    elif name == "create_project":
+        return await handle_create_project(arguments)
     elif name == "update_task":
         return await handle_update_task(arguments)
     elif name == "test_connection":

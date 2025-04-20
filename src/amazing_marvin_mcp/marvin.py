@@ -1,3 +1,12 @@
+"""
+Marvin API module that provides raw interaction with Amazing Marvin's CouchDB database.
+
+This module contains the MarvinAPI class which handles all direct database operations
+such as fetching tasks and projects, creating and updating items, and testing connections.
+It serves as the data layer for the MCP server, providing clean APIs for database operations
+without any LLM-specific formatting or adaptations.
+"""
+
 import os
 import json
 import requests
