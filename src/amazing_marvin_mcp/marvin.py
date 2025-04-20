@@ -289,7 +289,7 @@ class MarvinAPI:
         """
         self.logger.info(f"Creating new task: {title}")
 
-        current_time = int(time.time())
+        current_time = int(time.time()*1000)
 
         # Fetch all tasks to determine rank/masterRank
         all_tasks = self.get_tasks()
@@ -354,7 +354,7 @@ class MarvinAPI:
         """
         self.logger.info(f"Creating new project: {title}")
 
-        current_time = int(time.time())
+        current_time = int(time.time()*1000)
 
         # Fetch all categories to determine rank/masterRank
         all_categories = self.get_categories()
@@ -424,7 +424,7 @@ class MarvinAPI:
             task = response.json()
             
             # Update the updatedAt timestamp
-            current_time = int(time.time() * 1000)
+            current_time = int(time.time()*1000)
             task["updatedAt"] = current_time
             
             # Apply the updates

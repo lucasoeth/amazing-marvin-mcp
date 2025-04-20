@@ -51,7 +51,6 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
         result = marvin_adapter.create_task(
             title=title,
             parent_id=parent_id,
-            day=None,  # We've removed this from the schema
             due_date=due_date,
             time_estimate=time_estimate
         )
