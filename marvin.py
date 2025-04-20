@@ -356,7 +356,6 @@ class MarvinAPI:
                     due_date: Optional[str] = None, time_estimate: Optional[int] = None) -> Dict[str, Any]:
         """
         Create a new task directly in the CouchDB database.
-        Sets rank and masterRank automatically.
         """
         self.logger.info(f"Creating new task: {title}")
 
@@ -403,7 +402,7 @@ class MarvinAPI:
             response = self.session.post(self.base_url, json=task)
             response.raise_for_status()
             self.logger.info(f"Successfully created task: {title}")
-            return task
+            return response.json()
         except Exception as e:
             self.logger.error(f"Error creating task: {str(e)}")
             raise
@@ -413,7 +412,6 @@ class MarvinAPI:
                        ) -> Dict[str, Any]:
         """
         Create a new project directly in the CouchDB database.
-        Sets rank and masterRank automatically.
         """
         self.logger.info(f"Creating new project: {title}")
 
@@ -461,7 +459,50 @@ class MarvinAPI:
             response = self.session.post(self.base_url, json=project)
             response.raise_for_status()
             self.logger.info(f"Successfully created project: {title}")
-            return project
+            return response.json()
         except Exception as e:
             self.logger.error(f"Error creating project: {str(e)}")
+            raise
+    
+    def update_task(self, task_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an existing task directly in the CouchDB database.
+        
+        Args:
+            task_id: The ID of the task to update
+            updates: Dictionary of fields to update and their new values
+            
+        Returns:
+            The updated task document
+        """
+        self.logger.info(f"Updating task with ID: {task_id}")
+        
+        # First, get the current task document to ensure we have the latest revision
+        try:
+            url = f"{self.base_url}/{task_id}"
+            response = self.session.get(url)
+            response.raise_for_status()
+            task = response.json()
+            
+            # Update the updatedAt timestamp
+            import time
+            current_time = int(time.time() * 1000)
+            task["updatedAt"] = current_time
+            
+            # Apply the updates
+            for key, value in updates.items():
+                task[key] = value
+                
+                
+                task["fieldUpdates"][key] = current_time
+            
+            # Update the document in CouchDB
+            response = self.session.put(url, json=task)
+            response.raise_for_status()
+            
+            self.logger.info(f"Successfully updated task {task_id}")
+            return task
+            
+        except Exception as e:
+            self.logger.error(f"Error updating task {task_id}: {str(e)}")
             raise
