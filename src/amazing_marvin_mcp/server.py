@@ -31,10 +31,18 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
     Handle the create_task tool. Creates a new task in Amazing Marvin.
     """
     title = arguments.get("title", "")
-    parent_id = arguments.get("parent_id", "unassigned")
+    parent_id_input = arguments.get("parent_id", "unassigned")
     day = arguments.get("day", None)
     due_date = arguments.get("due_date", None)
     time_estimate_param = arguments.get("time_estimate", None)
+    
+    # Handle parent_id - convert from friendly ID if needed
+    parent_id = parent_id_input
+    if parent_id.startswith('p'):
+        # It's a friendly ID, get the real UUID
+        real_id = marvin_api.get_real_id(parent_id)
+        if real_id:
+            parent_id = real_id
     
     # Handle time estimate
     time_estimate = None
@@ -57,9 +65,17 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
             due_date=due_date,
             time_estimate=time_estimate
         )
+        
+        # Get the friendly ID for the newly created task
+        task_id = result.get("id", "")
+        friendly_id = marvin_api._get_friendly_task_id(task_id)
+        
         response = {
-            "task": result,
-            "message": f"Task '{title}' created successfully"
+            "task": {
+                "title": title,
+                "id": friendly_id
+            },
+            "message": f"Task '{title}' created successfully with ID {friendly_id}"
         }
         return [types.TextContent(type="text", text=json.dumps(response, indent=2))]
     except Exception as e:
@@ -81,27 +97,34 @@ The output structure uses the following abbreviations:
 - "pri": Priority level (1-3, with 3 being highest priority)
 - "sub": Subprojects contained within this project
 - "tasks": List of tasks within this project
+- "id": Friendly ID for referencing this task or project (e.g., "t1" for tasks, "p1" for projects)
+
+To refer to a specific task or project in other API calls, use these friendly IDs.
+Tasks are identified as "t1", "t2", etc. and projects as "p1", "p2", etc.
 
 Example output structure:
 {
   "Project A": {
+    "id": "p1",
     "pri": 3,
     "due": "2025-05-01",
     "tasks": [
-      {"t": "Task 1", "due": "2025-04-25", "est": "2h", "pri": 2},
-      {"t": "Task 2", "est": "30m"}
+      {"t": "Task 1", "id": "t1", "due": "2025-04-25", "est": "2h", "pri": 2},
+      {"t": "Task 2", "id": "t2", "est": "30m"}
     ],
     "sub": {
       "Subproject 1": {
+        "id": "p2",
         "tasks": [
-          {"t": "Subtask 1", "due": "2025-04-22"}
+          {"t": "Subtask 1", "id": "t3", "due": "2025-04-22"}
         ]
       }
     }
   },
   "Inbox": {
+    "id": "p3",
     "tasks": [
-      {"t": "Unsorted task", "est": "1h"}
+      {"t": "Unsorted task", "id": "t4", "est": "1h"}
     ]
   }
 }""",
@@ -123,7 +146,7 @@ Example output structure:
                     },
                     "parent_id": {
                         "type": "string",
-                        "description": "Optional ID of the parent project"
+                        "description": "Optional ID of the parent project. Can use a friendly ID (p1, p2, etc.) or the full UUID. Defaults to 'unassigned' (Inbox)."
                     },
                     "day": {
                         "type": "string",

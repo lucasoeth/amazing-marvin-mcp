@@ -59,6 +59,14 @@ class MarvinAPI:
         self._categories_last_seq = '0'
         self._tasks_cache = None
         self._tasks_last_seq = '0'
+        
+        # Initialize ID mappings
+        self._project_id_map = {}  # Maps real UUIDs to friendly IDs (p1, p2, etc.)
+        self._project_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
+        self._task_id_map = {}  # Maps real UUIDs to friendly IDs (t1, t2, etc.)
+        self._task_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
+        self._next_project_id = 1
+        self._next_task_id = 1
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
@@ -266,7 +274,12 @@ class MarvinAPI:
         return f"{hours:.1f}h"
 
     def _process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        res = {"t": task.get("title", "Untitled Task")}
+        """Process a task into a compact format with a friendly ID."""
+        friendly_id = self._get_friendly_task_id(task["_id"])
+        res = {
+            "t": task.get("title", "Untitled Task"),
+            "id": friendly_id
+        }
         if task.get("dueDate"):
             res["due"] = task["dueDate"]
         est = self._convert_time_estimate(task.get("timeEstimate"))
@@ -277,7 +290,9 @@ class MarvinAPI:
         return res
 
     def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
-        data: Dict[str, Any] = {}
+        """Process a category/project into a compact format with a friendly ID."""
+        friendly_id = self._get_friendly_project_id(cat["_id"])
+        data: Dict[str, Any] = {"id": friendly_id}
         if cat.get("priority"):
             data["pri"] = cat["priority"]
         if cat.get("dueDate"):
@@ -506,3 +521,38 @@ class MarvinAPI:
         except Exception as e:
             self.logger.error(f"Error updating task {task_id}: {str(e)}")
             raise
+
+    def _get_friendly_project_id(self, uuid):
+        """
+        Get a friendly project ID (p1, p2, etc.) for a UUID.
+        If the UUID doesn't have a friendly ID yet, create one.
+        """
+        if uuid not in self._project_id_map:
+            friendly_id = f"p{self._next_project_id}"
+            self._project_id_map[uuid] = friendly_id
+            self._project_id_reverse_map[friendly_id] = uuid
+            self._next_project_id += 1
+        return self._project_id_map[uuid]
+    
+    def _get_friendly_task_id(self, uuid):
+        """
+        Get a friendly task ID (t1, t2, etc.) for a UUID.
+        If the UUID doesn't have a friendly ID yet, create one.
+        """
+        if uuid not in self._task_id_map:
+            friendly_id = f"t{self._next_task_id}"
+            self._task_id_map[uuid] = friendly_id
+            self._task_id_reverse_map[friendly_id] = uuid
+            self._next_task_id += 1
+        return self._task_id_map[uuid]
+    
+    def get_real_id(self, friendly_id):
+        """
+        Convert a friendly ID (p1, t1, etc.) back to the real UUID.
+        Returns None if the friendly ID is not found.
+        """
+        if friendly_id.startswith('p') and friendly_id in self._project_id_reverse_map:
+            return self._project_id_reverse_map[friendly_id]
+        elif friendly_id.startswith('t') and friendly_id in self._task_id_reverse_map:
+            return self._task_id_reverse_map[friendly_id]
+        return None
