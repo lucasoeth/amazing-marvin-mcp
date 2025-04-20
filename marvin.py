@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -13,16 +14,17 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
+
 class MarvinAPI:
     """
     A class to handle interactions with the CouchDB server for Amazing Marvin data.
     This is part of the Model Context Protocol (MCP) server implementation.
     """
-    
+
     def __init__(self, log_level=None):
         """
         Initialize the MarvinAPI with connection details from environment variables.
-        
+
         Args:
             log_level: Optional logging level (e.g., logging.DEBUG, logging.INFO)
         """
@@ -30,27 +32,28 @@ class MarvinAPI:
         self.logger = logging.getLogger('MarvinAPI')
         if log_level is not None:
             self.logger.setLevel(log_level)
-        
+
         # Load environment variables
         load_dotenv()
-        
+
         # Get database connection details from environment variables
         self.db_name = os.environ.get("DB_NAME")
         self.db_url = os.environ.get("DB_URL")
         self.db_username = os.environ.get("DB_USERNAME")
         self.db_password = os.environ.get("DB_PASSWORD")
-        
+
         # Check if all required environment variables are available
         self._validate_env_vars()
-        
+
         # Create the base URL for CouchDB requests
         self.base_url = f"{self.db_url}/{self.db_name}"
-        
+
         # Initialize the session with auth credentials
         self.session = requests.Session()
         self.session.auth = (self.db_username, self.db_password)
-        self.logger.debug(f"Initialized MarvinAPI with database: {self.db_name}")
-        
+        self.logger.debug(
+            f"Initialized MarvinAPI with database: {self.db_name}")
+
         # Initialize caches and sequence tracking
         self._categories_cache = None
         self._categories_last_seq = '0'
@@ -68,7 +71,7 @@ class MarvinAPI:
             missing_vars.append("DB_USERNAME")
         if not self.db_password:
             missing_vars.append("DB_PASSWORD")
-        
+
         if missing_vars:
             error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
             self.logger.error(error_msg)
@@ -77,13 +80,14 @@ class MarvinAPI:
     def test_connection(self) -> bool:
         """
         Test the connection to the CouchDB server.
-        
+
         Returns:
             bool: True if connection is successful, False otherwise.
         """
         try:
             # Try to get the database info
-            self.logger.info(f"Testing connection to {self.db_url}/{self.db_name}")
+            self.logger.info(
+                f"Testing connection to {self.db_url}/{self.db_name}")
             response = self.session.get(self.base_url)
             response.raise_for_status()
             self.logger.info("Database connection successful!")
@@ -106,16 +110,20 @@ class MarvinAPI:
             'since': last_seq
         }
         try:
-            self.logger.debug(f"Checking changes since {last_seq} with selector: {json.dumps(selector)}")
-            response = self.session.post(url, params=params, json={'selector': selector})
+            self.logger.debug(
+                f"Checking changes since {last_seq} with selector: {json.dumps(selector)}")
+            response = self.session.post(
+                url, params=params, json={'selector': selector})
             response.raise_for_status()
             changes = response.json()
             new_last_seq = str(changes.get('last_seq'))
             if not changes.get('results'):
-                self.logger.debug(f"No relevant changes found since {last_seq}. Current seq: {new_last_seq}")
+                self.logger.debug(
+                    f"No relevant changes found since {last_seq}. Current seq: {new_last_seq}")
                 return new_last_seq if last_seq == '0' else None
             else:
-                self.logger.debug(f"Changes found since {last_seq}. New seq: {new_last_seq}")
+                self.logger.debug(
+                    f"Changes found since {last_seq}. New seq: {new_last_seq}")
                 return new_last_seq
         except Exception as e:
             self.logger.error(f"Error checking changes feed: {e}")
@@ -133,15 +141,19 @@ class MarvinAPI:
             ]
         }
         try:
-            new_seq = self._check_changes(self._categories_last_seq, category_selector)
+            new_seq = self._check_changes(
+                self._categories_last_seq, category_selector)
             if new_seq is None and self._categories_cache is not None:
-                self.logger.info("Returning cached categories (no changes detected).")
+                self.logger.info(
+                    "Returning cached categories (no changes detected).")
                 return self._categories_cache
 
-            self.logger.info("Fetching fresh categories (changes detected or cache empty).")
+            self.logger.info(
+                "Fetching fresh categories (changes detected or cache empty).")
             url = f"{self.base_url}/_find"
             query = {"selector": category_selector}
-            self.logger.debug(f"Fetching categories with query: {json.dumps(query)}")
+            self.logger.debug(
+                f"Fetching categories with query: {json.dumps(query)}")
             response = self.session.post(url, json=query)
             response.raise_for_status()
             result = response.json()
@@ -149,7 +161,8 @@ class MarvinAPI:
             for category in categories:
                 if "fieldUpdates" in category:
                     del category["fieldUpdates"]
-            self.logger.info(f"Successfully fetched {len(categories)} categories")
+            self.logger.info(
+                f"Successfully fetched {len(categories)} categories")
             self._categories_cache = categories
             if new_seq is None:
                 current_seq = self._check_changes('0', category_selector)
@@ -169,7 +182,8 @@ class MarvinAPI:
         invalidated by the _changes feed.
         """
         if parent_id:
-            self.logger.info(f"Fetching tasks for specific parent {parent_id}, bypassing cache.")
+            self.logger.info(
+                f"Fetching tasks for specific parent {parent_id}, bypassing cache.")
             try:
                 query = {
                     "selector": {
@@ -182,17 +196,21 @@ class MarvinAPI:
                     }
                 }
                 url = f"{self.base_url}/_find"
-                self.logger.debug(f"Fetching tasks for parent {parent_id} with query: {json.dumps(query)}")
+                self.logger.debug(
+                    f"Fetching tasks for parent {parent_id} with query: {json.dumps(query)}")
                 response = self.session.post(url, json=query)
                 response.raise_for_status()
                 result = response.json()
                 tasks = result.get("docs", [])
                 for task in tasks:
-                    if "fieldUpdates" in task: del task["fieldUpdates"]
-                self.logger.info(f"Successfully fetched {len(tasks)} tasks for parent {parent_id}")
+                    if "fieldUpdates" in task:
+                        del task["fieldUpdates"]
+                self.logger.info(
+                    f"Successfully fetched {len(tasks)} tasks for parent {parent_id}")
                 return tasks
             except Exception as e:
-                self.logger.error(f"Error fetching tasks for parent {parent_id}: {str(e)}")
+                self.logger.error(
+                    f"Error fetching tasks for parent {parent_id}: {str(e)}")
                 raise
 
         # Always fetch only incomplete tasks
@@ -206,20 +224,23 @@ class MarvinAPI:
         try:
             new_seq = self._check_changes(self._tasks_last_seq, task_selector)
             if new_seq is None and self._tasks_cache is not None:
-                self.logger.info("Returning cached tasks (no changes detected).")
+                self.logger.info(
+                    "Returning cached tasks (no changes detected).")
                 return self._tasks_cache
 
-            self.logger.info("Fetching fresh tasks (changes detected or cache empty).")
+            self.logger.info(
+                "Fetching fresh tasks (changes detected or cache empty).")
             url = f"{self.base_url}/_find"
             query = {"selector": task_selector}
-            self.logger.debug(f"Fetching all tasks with query: {json.dumps(query)}")
+            self.logger.debug(
+                f"Fetching all tasks with query: {json.dumps(query)}")
             response = self.session.post(url, json=query)
             response.raise_for_status()
             result = response.json()
             tasks = result.get("docs", [])
-            for task in tasks:
-                if "fieldUpdates" in task:
-                    del task["fieldUpdates"]
+            # for task in tasks:
+            #     if "fieldUpdates" in task:
+            #         del task["fieldUpdates"]
             self.logger.info(f"Successfully fetched {len(tasks)} tasks.")
             self._tasks_cache = tasks
             if new_seq is None:
@@ -243,19 +264,24 @@ class MarvinAPI:
         if hours.is_integer():
             return f"{int(hours)}h"
         return f"{hours:.1f}h"
-        
+
     def _process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         res = {"t": task.get("title", "Untitled Task")}
-        if task.get("dueDate"): res["due"] = task["dueDate"]
+        if task.get("dueDate"):
+            res["due"] = task["dueDate"]
         est = self._convert_time_estimate(task.get("timeEstimate"))
-        if est: res["est"] = est
-        if task.get("isStarred"): res["pri"] = task.get("isStarred")
+        if est:
+            res["est"] = est
+        if task.get("isStarred"):
+            res["pri"] = task.get("isStarred")
         return res
 
     def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
         data: Dict[str, Any] = {}
-        if cat.get("priority"): data["pri"] = cat["priority"]
-        if cat.get("dueDate"): data["due"] = cat["dueDate"]
+        if cat.get("priority"):
+            data["pri"] = cat["priority"]
+        if cat.get("dueDate"):
+            data["due"] = cat["dueDate"]
         return data
 
     def build_hierarchy_string(self) -> str:
@@ -268,9 +294,11 @@ class MarvinAPI:
         tasks = self.get_tasks()
 
         # Find root categories (parentId is "root" or missing)
-        root_categories = [cat for cat in categories if cat.get("parentId") == "root" or not cat.get("parentId")]
+        root_categories = [cat for cat in categories if cat.get(
+            "parentId") == "root" or not cat.get("parentId")]
         # Find categories with parentId 'unassigned' (should go under Inbox)
-        inbox_categories = [cat for cat in categories if cat.get("parentId") == "unassigned"]
+        inbox_categories = [cat for cat in categories if cat.get(
+            "parentId") == "unassigned"]
         inbox_tasks = [t for t in tasks if t.get("parentId") == "unassigned"]
 
         # Build the hierarchy with compact entries
@@ -278,28 +306,34 @@ class MarvinAPI:
             cid = category["_id"]
             cdata = self._process_category(category)
             # Add tasks
-            tlist = [self._process_task(t) for t in tasks if t.get("parentId") == cid]
+            tlist = [self._process_task(t)
+                     for t in tasks if t.get("parentId") == cid]
             if tlist:
                 cdata["tasks"] = tlist
             # Add subcategories
             subs = [c for c in categories if c.get("parentId") == cid]
             if subs:
-                cdata["sub"] = {s.get("title", "Untitled"): process_category_recursive(s) for s in subs}
+                cdata["sub"] = {
+                    s.get("title", "Untitled"): process_category_recursive(s) for s in subs}
             return cdata
 
-        hierarchy = {rc.get("title", "Untitled Category"): process_category_recursive(rc) for rc in root_categories}
+        hierarchy = {rc.get("title", "Untitled Category"): process_category_recursive(
+            rc) for rc in root_categories}
 
         # Add synthetic Inbox for categories and tasks with parentId 'unassigned'
         if inbox_categories or inbox_tasks:
             inbox_dict = {}
             if inbox_categories:
-                inbox_dict["sub"] = {cat.get("title", "Untitled Category"): process_category_recursive(cat) for cat in inbox_categories}
+                inbox_dict["sub"] = {cat.get("title", "Untitled Category"): process_category_recursive(
+                    cat) for cat in inbox_categories}
             if inbox_tasks:
-                inbox_dict["tasks"] = [self._process_task(t) for t in inbox_tasks]
+                inbox_dict["tasks"] = [
+                    self._process_task(t) for t in inbox_tasks]
             hierarchy["Inbox"] = inbox_dict
 
         # Compact tasks formatting. Very important for the MCP server.
         json_str = json.dumps(hierarchy, indent=2)
+
         def compact_tasks(match):
             tasks = json.loads(match.group(2))
             if not tasks:
@@ -317,3 +351,117 @@ class MarvinAPI:
         pattern = r'^(\s*)"tasks": (\[[\s\S]*?\])'
         json_str = re.sub(pattern, compact_tasks, json_str, flags=re.MULTILINE)
         return json_str
+
+    def create_task(self, title: str, parent_id: str = "unassigned", day: Optional[str] = None,
+                    due_date: Optional[str] = None, time_estimate: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Create a new task directly in the CouchDB database.
+        Sets rank and masterRank automatically.
+        """
+        self.logger.info(f"Creating new task: {title}")
+
+        current_time = int(time.time())
+
+        # Fetch all tasks to determine rank/masterRank
+        all_tasks = self.get_tasks()
+        # rank: max rank among all tasks + 1
+        max_rank = max((t.get("rank", 0) for t in all_tasks if isinstance(
+            t.get("rank", 0), (int, float))), default=0)
+        new_rank = max_rank + 1
+
+        # masterRank: max masterRank among tasks in the same parent + 1
+        parent_tasks = [t for t in all_tasks if t.get("parentId") == parent_id]
+        max_master_rank = max((t.get("masterRank", 0) for t in parent_tasks if isinstance(
+            t.get("masterRank", 0), (int, float))), default=0)
+        new_master_rank = max_master_rank + 1
+
+        # Create the task document
+        task = {
+            "db": "Tasks",
+            "title": title,
+            "parentId": parent_id,
+            "createdAt": current_time,
+            "updatedAt": current_time,
+            "rank": new_rank,
+            "masterRank": new_master_rank
+        }
+
+        # Add optional fields
+        if day:
+            task["day"] = day
+        else:
+            task["day"] = "unassigned"
+        if due_date:
+            task["dueDate"] = due_date
+        if time_estimate:
+            task["timeEstimate"] = time_estimate
+
+        task["fieldUpdates"] = {}
+
+        # Insert the document into CouchDB
+        try:
+            response = self.session.post(self.base_url, json=task)
+            response.raise_for_status()
+            self.logger.info(f"Successfully created task: {title}")
+            return task
+        except Exception as e:
+            self.logger.error(f"Error creating task: {str(e)}")
+            raise
+
+    def create_project(self, title: str, parent_id: str = "unassigned",
+                       due_date: Optional[str] = None, priority: Optional[str] = None,
+                       ) -> Dict[str, Any]:
+        """
+        Create a new project directly in the CouchDB database.
+        Sets rank and masterRank automatically.
+        """
+        self.logger.info(f"Creating new project: {title}")
+
+        current_time = int(time.time())
+
+        # Fetch all categories to determine rank/masterRank
+        all_categories = self.get_categories()
+        # rank: max rank among all categories + 1
+        max_rank = max(
+            (c.get("rank", 0) for c in all_categories if isinstance(
+                c.get("rank", 0), (int, float))),
+            default=0
+        )
+        new_rank = max_rank + 1
+
+        # masterRank: max masterRank among categories in the same parent + 1
+        parent_categories = [c for c in all_categories if c.get("parentId") == parent_id]
+        max_master_rank = max(
+            (c.get("masterRank", 0) for c in parent_categories if isinstance(
+                c.get("masterRank", 0), (int, float))),
+            default=0
+        )
+        new_master_rank = max_master_rank + 1
+
+        # Create the project document
+        project = {
+            "db": "Categories",
+            "type": "project",
+            "title": title,
+            "parentId": parent_id,
+            "createdAt": current_time,
+            "updatedAt": current_time,
+            "rank": new_rank,
+            "masterRank": new_master_rank
+        }
+
+        # Add optional fields
+        if due_date:
+            project["dueDate"] = due_date
+        if priority:
+            project["priority"] = priority
+
+        # Insert the document into CouchDB
+        try:
+            response = self.session.post(self.base_url, json=project)
+            response.raise_for_status()
+            self.logger.info(f"Successfully created project: {title}")
+            return project
+        except Exception as e:
+            self.logger.error(f"Error creating project: {str(e)}")
+            raise
