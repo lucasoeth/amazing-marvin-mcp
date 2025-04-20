@@ -7,9 +7,9 @@ from .adapter import MarvinAdapter
 from .descriptions import (
     LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
     CREATE_PROJECT_DESCRIPTION, UPDATE_TASK_DESCRIPTION, 
-    TEST_CONNECTION_DESCRIPTION, LIST_TASKS_SCHEMA, 
-    CREATE_TASK_SCHEMA, CREATE_PROJECT_SCHEMA,
-    UPDATE_TASK_SCHEMA, TEST_CONNECTION_SCHEMA
+    SCHEDULE_TASK_DESCRIPTION, TEST_CONNECTION_DESCRIPTION, 
+    LIST_TASKS_SCHEMA, CREATE_TASK_SCHEMA, CREATE_PROJECT_SCHEMA,
+    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA, TEST_CONNECTION_SCHEMA
 )
 
 # Create server
@@ -39,7 +39,6 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
     """
     title = arguments.get("title", "")
     parent_id = arguments.get("parent_id", "unassigned")
-    day = arguments.get("day", None)
     due_date = arguments.get("due_date", None)
     time_estimate = arguments.get("time_estimate", None)
     
@@ -52,10 +51,34 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
         result = marvin_adapter.create_task(
             title=title,
             parent_id=parent_id,
-            day=day,
+            day=None,  # We've removed this from the schema
             due_date=due_date,
             time_estimate=time_estimate
         )
+        
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+
+async def handle_schedule_task(arguments: dict) -> list[types.TextContent]:
+    """
+    Handle the schedule_task tool. Schedules a task for a specific day.
+    """
+    task_id = arguments.get("task_id", "")
+    day = arguments.get("day", "")
+    
+    if not task_id:
+        error_msg = {"error": "Task ID is required"}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    
+    if not day:
+        error_msg = {"error": "Day is required (format: YYYY-MM-DD)"}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    
+    try:
+        # Use the adapter to schedule the task
+        result = marvin_adapter.schedule_task(task_id, day)
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     except Exception as e:
@@ -156,6 +179,18 @@ async def handle_list_tools() -> list[types.Tool]:
             name="test_connection",
             description=TEST_CONNECTION_DESCRIPTION,
             inputSchema=TEST_CONNECTION_SCHEMA
+        ),
+        types.Tool(
+            name="schedule_task",
+            description="Schedules a task for a specific day.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "day": {"type": "string", "format": "date"}
+                },
+                "required": ["task_id", "day"]
+            }
         )
     ]
 
@@ -175,6 +210,8 @@ async def call_tool(
         return await handle_update_task(arguments)
     elif name == "test_connection":
         return await handle_test_connection(arguments)
+    elif name == "schedule_task":
+        return await handle_schedule_task(arguments)
     else:
         raise ValueError(f"Tool not found: {name}")
 

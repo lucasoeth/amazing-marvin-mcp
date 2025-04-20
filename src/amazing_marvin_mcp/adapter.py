@@ -438,6 +438,47 @@ class MarvinAdapter:
         
         return response
     
+    def schedule_task(self, task_id: str, day: str) -> Dict[str, Any]:
+        """
+        Schedule a task for a specific day.
+        
+        Args:
+            task_id: The friendly ID (t1) of the task to schedule
+            day: The day to schedule the task for (YYYY-MM-DD)
+            
+        Returns:
+            Dictionary with the scheduled task info
+        """
+        # Convert task_id from friendly ID
+        real_task_id = task_id
+        if task_id and task_id.startswith('t'):
+            converted_id = self.get_real_id(task_id)
+            if converted_id:
+                real_task_id = converted_id
+            else:
+                raise ValueError(f"Task with friendly ID {task_id} not found")
+        
+        # Create update with just the day field
+        updates = {"day": day}
+        
+        # Update the task using the API
+        api_result = self.api.update_task(real_task_id, updates)
+        
+        # Get the friendly ID
+        friendly_id = self._get_friendly_task_id(real_task_id)
+        
+        # Create LLM-friendly response
+        response = {
+            "task": {
+                "title": api_result.get("title", ""),
+                "id": friendly_id,
+                "day": day
+            },
+            "message": f"Task scheduled for {day}"
+        }
+        
+        return response
+    
     def test_connection(self) -> Dict[str, str]:
         """
         Test the connection to the Amazing Marvin CouchDB server.

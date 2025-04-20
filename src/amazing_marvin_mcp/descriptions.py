@@ -60,8 +60,13 @@ Projects can contain tasks and other subprojects.
 
 UPDATE_TASK_DESCRIPTION = """Update an existing task in Amazing Marvin.
 
-You can update any properties of a task using its friendly ID (t1, t2, etc.).
-Time estimates can be specified in human-readable format like "30m", "1.5h", or "1h 30m".
+You can update basic properties of a task such as its title, parent project, due date, and time estimate.
+For scheduling tasks to specific days, use the schedule_task tool instead.
+"""
+
+SCHEDULE_TASK_DESCRIPTION = """Schedule a task for a specific day in Amazing Marvin.
+
+This tool allows you to specify which day a task should be worked on (as opposed to when it's due).
 """
 
 TEST_CONNECTION_DESCRIPTION = """Test the connection to the Amazing Marvin database.
@@ -86,10 +91,6 @@ CREATE_TASK_SCHEMA = {
         "parent_id": {
             "type": "string",
             "description": "Friendly ID of the parent project (p1, p2, etc.). Defaults to the Inbox."
-        },
-        "day": {
-            "type": "string",
-            "description": "Optional day for the task (YYYY-MM-DD)"
         },
         "due_date": {
             "type": "string",
@@ -141,14 +142,6 @@ UPDATE_TASK_SCHEMA = {
             "type": "string",
             "description": "New parent project friendly ID (p1, p2, etc.)"
         },
-        "done": {
-            "type": "boolean",
-            "description": "Mark the task as done or not done"
-        },
-        "day": {
-            "type": "string",
-            "description": "New day for the task (YYYY-MM-DD)"
-        },
         "due_date": {
             "type": "string",
             "description": "New due date for the task (YYYY-MM-DD)"
@@ -159,6 +152,21 @@ UPDATE_TASK_SCHEMA = {
         }
     },
     "required": ["task_id"]
+}
+
+SCHEDULE_TASK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "task_id": {
+            "type": "string",
+            "description": "The friendly ID (t1, t2, etc.) of the task to schedule"
+        },
+        "day": {
+            "type": "string",
+            "description": "The day to schedule the task for (YYYY-MM-DD)"
+        }
+    },
+    "required": ["task_id", "day"]
 }
 
 TEST_CONNECTION_SCHEMA = {
