@@ -3,11 +3,17 @@ import mcp.server.stdio
 from mcp import types
 import json
 
-from .marvin import MarvinAPI
+from .adapter import MarvinAdapter
+from .descriptions import (
+    LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
+    UPDATE_TASK_DESCRIPTION, TEST_CONNECTION_DESCRIPTION,
+    LIST_TASKS_SCHEMA, CREATE_TASK_SCHEMA, 
+    UPDATE_TASK_SCHEMA, TEST_CONNECTION_SCHEMA
+)
 
 # Create server
 server = Server("amazing-marvin-mcp", "0.1.0")
-marvin_api = MarvinAPI()
+marvin_adapter = MarvinAdapter()
 
 # Separate functions for each tool implementation
 async def handle_list_tasks(arguments: dict) -> list[types.TextContent]:
@@ -15,12 +21,12 @@ async def handle_list_tasks(arguments: dict) -> list[types.TextContent]:
     Handle the list_tasks tool. Gets the hierarchical structure of projects and tasks.
     """
     try:
-        # Get the hierarchical structure instead of just tasks
-        hierarchy = marvin_api.build_hierarchy_string()
+        # Get the hierarchical structure using the adapter
+        hierarchy_str = marvin_adapter.build_hierarchy_string()
         
         return [types.TextContent(
             type="text", 
-            text=hierarchy
+            text=hierarchy_str
         )]
     except Exception as e:
         error_msg = {"error": str(e)}
@@ -31,34 +37,18 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
     Handle the create_task tool. Creates a new task in Amazing Marvin.
     """
     title = arguments.get("title", "")
-    parent_id_input = arguments.get("parent_id", "unassigned")
+    parent_id = arguments.get("parent_id", "unassigned")
     day = arguments.get("day", None)
     due_date = arguments.get("due_date", None)
-    time_estimate_param = arguments.get("time_estimate", None)
-    
-    # Handle parent_id - convert from friendly ID if needed
-    parent_id = parent_id_input
-    if parent_id.startswith('p'):
-        # It's a friendly ID, get the real UUID
-        real_id = marvin_api.get_real_id(parent_id)
-        if real_id:
-            parent_id = real_id
-    
-    # Handle time estimate
-    time_estimate = None
-    if time_estimate_param:
-        try:
-            time_estimate = int(time_estimate_param)
-        except ValueError:
-            error_msg = {"error": "time_estimate must be a number in milliseconds"}
-            return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    time_estimate = arguments.get("time_estimate", None)
     
     if not title:
         error_msg = {"error": "Title is required"}
         return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
     
     try:
-        result = marvin_api.create_task(
+        # Use the adapter to create the task with LLM-friendly parameters
+        result = marvin_adapter.create_task(
             title=title,
             parent_id=parent_id,
             day=day,
@@ -66,18 +56,46 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
             time_estimate=time_estimate
         )
         
-        # Get the friendly ID for the newly created task
-        task_id = result.get("id", "")
-        friendly_id = marvin_api._get_friendly_task_id(task_id)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+
+async def handle_update_task(arguments: dict) -> list[types.TextContent]:
+    """
+    Handle the update_task tool. Updates an existing task in Amazing Marvin.
+    """
+    task_id = arguments.get("task_id", "")
+    
+    if not task_id:
+        error_msg = {"error": "Task ID is required"}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    
+    # Create updates dictionary from all other arguments
+    updates = {k: v for k, v in arguments.items() if k != "task_id"}
+    
+    if not updates:
+        error_msg = {"error": "No updates provided"}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    
+    try:
+        # Use the adapter to update the task
+        result = marvin_adapter.update_task(task_id, updates)
         
-        response = {
-            "task": {
-                "title": title,
-                "id": friendly_id
-            },
-            "message": f"Task '{title}' created successfully with ID {friendly_id}"
-        }
-        return [types.TextContent(type="text", text=json.dumps(response, indent=2))]
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+
+async def handle_test_connection(arguments: dict) -> list[types.TextContent]:
+    """
+    Handle the test_connection tool. Tests the connection to the Amazing Marvin database.
+    """
+    try:
+        # Use the adapter to test the connection
+        result = marvin_adapter.test_connection()
+        
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
     except Exception as e:
         error_msg = {"error": str(e)}
         return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
@@ -88,81 +106,23 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="list_tasks",
-            description="""Get the hierarchical structure of projects and tasks from Amazing Marvin.
-            
-The output structure uses the following abbreviations:
-- "t": Title of the task
-- "due": Due date (YYYY-MM-DD)
-- "est": Time estimate (e.g., "30m" for 30 minutes, "2h" for 2 hours)
-- "pri": Priority level (1-3, with 3 being highest priority)
-- "sub": Subprojects contained within this project
-- "tasks": List of tasks within this project
-- "id": Friendly ID for referencing this task or project (e.g., "t1" for tasks, "p1" for projects)
-
-To refer to a specific task or project in other API calls, use these friendly IDs.
-Tasks are identified as "t1", "t2", etc. and projects as "p1", "p2", etc.
-
-Example output structure:
-{
-  "Project A": {
-    "id": "p1",
-    "pri": 3,
-    "due": "2025-05-01",
-    "tasks": [
-      {"t": "Task 1", "id": "t1", "due": "2025-04-25", "est": "2h", "pri": 2},
-      {"t": "Task 2", "id": "t2", "est": "30m"}
-    ],
-    "sub": {
-      "Subproject 1": {
-        "id": "p2",
-        "tasks": [
-          {"t": "Subtask 1", "id": "t3", "due": "2025-04-22"}
-        ]
-      }
-    }
-  },
-  "Inbox": {
-    "id": "p3",
-    "tasks": [
-      {"t": "Unsorted task", "id": "t4", "est": "1h"}
-    ]
-  }
-}""",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            description=LIST_TASKS_DESCRIPTION,
+            inputSchema=LIST_TASKS_SCHEMA
         ),
         types.Tool(
             name="create_task",
-            description="Create a new task in Amazing Marvin",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "The title of the task"
-                    },
-                    "parent_id": {
-                        "type": "string",
-                        "description": "Optional ID of the parent project. Can use a friendly ID (p1, p2, etc.) or the full UUID. Defaults to 'unassigned' (Inbox)."
-                    },
-                    "day": {
-                        "type": "string",
-                        "description": "Optional day for the task (YYYY-MM-DD)"
-                    },
-                    "due_date": {
-                        "type": "string",
-                        "description": "Optional due date for the task (YYYY-MM-DD)"
-                    },
-                    "time_estimate": {
-                        "type": "string",
-                        "description": "Optional time estimate in milliseconds"
-                    }
-                },
-                "required": ["title"]
-            }
+            description=CREATE_TASK_DESCRIPTION,
+            inputSchema=CREATE_TASK_SCHEMA
+        ),
+        types.Tool(
+            name="update_task",
+            description=UPDATE_TASK_DESCRIPTION,
+            inputSchema=UPDATE_TASK_SCHEMA
+        ),
+        types.Tool(
+            name="test_connection",
+            description=TEST_CONNECTION_DESCRIPTION,
+            inputSchema=TEST_CONNECTION_SCHEMA
         )
     ]
 
@@ -176,6 +136,10 @@ async def call_tool(
         return await handle_list_tasks(arguments)
     elif name == "create_task":
         return await handle_create_task(arguments)
+    elif name == "update_task":
+        return await handle_update_task(arguments)
+    elif name == "test_connection":
+        return await handle_test_connection(arguments)
     else:
         raise ValueError(f"Tool not found: {name}")
 

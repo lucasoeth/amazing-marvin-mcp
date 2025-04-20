@@ -18,7 +18,7 @@ logging.basicConfig(
 class MarvinAPI:
     """
     A class to handle interactions with the CouchDB server for Amazing Marvin data.
-    This is part of the Model Context Protocol (MCP) server implementation.
+    This class provides raw API access to the Amazing Marvin database.
     """
 
     def __init__(self, log_level=None):
@@ -59,14 +59,6 @@ class MarvinAPI:
         self._categories_last_seq = '0'
         self._tasks_cache = None
         self._tasks_last_seq = '0'
-        
-        # Initialize ID mappings
-        self._project_id_map = {}  # Maps real UUIDs to friendly IDs (p1, p2, etc.)
-        self._project_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
-        self._task_id_map = {}  # Maps real UUIDs to friendly IDs (t1, t2, etc.)
-        self._task_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
-        self._next_project_id = 1
-        self._next_task_id = 1
 
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
@@ -140,6 +132,9 @@ class MarvinAPI:
     def get_categories(self) -> List[Dict[str, Any]]:
         """
         Fetch all categories from the CouchDB database, using a cache invalidated by the _changes feed.
+        
+        Returns:
+            List of category/project documents
         """
         category_selector = {
             "db": "Categories",
@@ -188,6 +183,12 @@ class MarvinAPI:
         """
         Fetch incomplete tasks from the CouchDB database, using a cache for all tasks (when parent_id is None),
         invalidated by the _changes feed.
+        
+        Args:
+            parent_id: Optional ID of the parent project to filter tasks
+            
+        Returns:
+            List of task documents
         """
         if parent_id:
             self.logger.info(
@@ -246,9 +247,9 @@ class MarvinAPI:
             response.raise_for_status()
             result = response.json()
             tasks = result.get("docs", [])
-            # for task in tasks:
-            #     if "fieldUpdates" in task:
-            #         del task["fieldUpdates"]
+            for task in tasks:
+                if "fieldUpdates" in task:
+                    del task["fieldUpdates"]
             self.logger.info(f"Successfully fetched {len(tasks)} tasks.")
             self._tasks_cache = tasks
             if new_seq is None:
@@ -263,114 +264,20 @@ class MarvinAPI:
             self._tasks_last_seq = '0'
             raise
 
-    def _convert_time_estimate(self, ms):
-        if not ms:
-            return None
-        hours = ms / (1000 * 60 * 60)
-        if hours < 1:
-            return f"{int(ms / (1000 * 60))}m"
-        if hours.is_integer():
-            return f"{int(hours)}h"
-        return f"{hours:.1f}h"
-
-    def _process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a task into a compact format with a friendly ID."""
-        friendly_id = self._get_friendly_task_id(task["_id"])
-        res = {
-            "t": task.get("title", "Untitled Task"),
-            "id": friendly_id
-        }
-        if task.get("dueDate"):
-            res["due"] = task["dueDate"]
-        est = self._convert_time_estimate(task.get("timeEstimate"))
-        if est:
-            res["est"] = est
-        if task.get("isStarred"):
-            res["pri"] = task.get("isStarred")
-        return res
-
-    def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a category/project into a compact format with a friendly ID."""
-        friendly_id = self._get_friendly_project_id(cat["_id"])
-        data: Dict[str, Any] = {"id": friendly_id}
-        if cat.get("priority"):
-            data["pri"] = cat["priority"]
-        if cat.get("dueDate"):
-            data["due"] = cat["dueDate"]
-        return data
-
-    def build_hierarchy_string(self) -> str:
-        """
-        Build the hierarchical structure of categories and tasks and return as a compact JSON string.
-        This does not save to file, just returns the string.
-        """
-        # Fetch all categories and tasks
-        categories = self.get_categories()
-        tasks = self.get_tasks()
-
-        # Find root categories (parentId is "root" or missing)
-        root_categories = [cat for cat in categories if cat.get(
-            "parentId") == "root" or not cat.get("parentId")]
-        # Find categories with parentId 'unassigned' (should go under Inbox)
-        inbox_categories = [cat for cat in categories if cat.get(
-            "parentId") == "unassigned"]
-        inbox_tasks = [t for t in tasks if t.get("parentId") == "unassigned"]
-
-        # Build the hierarchy with compact entries
-        def process_category_recursive(category: Dict[str, Any]) -> Dict[str, Any]:
-            cid = category["_id"]
-            cdata = self._process_category(category)
-            # Add tasks
-            tlist = [self._process_task(t)
-                     for t in tasks if t.get("parentId") == cid]
-            if tlist:
-                cdata["tasks"] = tlist
-            # Add subcategories
-            subs = [c for c in categories if c.get("parentId") == cid]
-            if subs:
-                cdata["sub"] = {
-                    s.get("title", "Untitled"): process_category_recursive(s) for s in subs}
-            return cdata
-
-        hierarchy = {rc.get("title", "Untitled Category"): process_category_recursive(
-            rc) for rc in root_categories}
-
-        # Add synthetic Inbox for categories and tasks with parentId 'unassigned'
-        if inbox_categories or inbox_tasks:
-            inbox_dict = {}
-            if inbox_categories:
-                inbox_dict["sub"] = {cat.get("title", "Untitled Category"): process_category_recursive(
-                    cat) for cat in inbox_categories}
-            if inbox_tasks:
-                inbox_dict["tasks"] = [
-                    self._process_task(t) for t in inbox_tasks]
-            hierarchy["Inbox"] = inbox_dict
-
-        # Compact tasks formatting. Very important for the MCP server.
-        json_str = json.dumps(hierarchy, indent=2)
-
-        def compact_tasks(match):
-            tasks = json.loads(match.group(2))
-            if not tasks:
-                return '"tasks": []'
-            prefix = match.group(1)
-            task_indent = prefix + '  '
-            lines = [prefix + '"tasks": [']
-            for i, task in enumerate(tasks):
-                line = task_indent + json.dumps(task, separators=(',', ':'))
-                if i < len(tasks) - 1:
-                    line += ','
-                lines.append(line)
-            lines.append(prefix + ']')
-            return '\n'.join(lines)
-        pattern = r'^(\s*)"tasks": (\[[\s\S]*?\])'
-        json_str = re.sub(pattern, compact_tasks, json_str, flags=re.MULTILINE)
-        return json_str
-
     def create_task(self, title: str, parent_id: str = "unassigned", day: Optional[str] = None,
                     due_date: Optional[str] = None, time_estimate: Optional[int] = None) -> Dict[str, Any]:
         """
         Create a new task directly in the CouchDB database.
+        
+        Args:
+            title: The title of the task
+            parent_id: ID of the parent project
+            day: Optional day for the task (YYYY-MM-DD)
+            due_date: Optional due date for the task (YYYY-MM-DD)
+            time_estimate: Optional time estimate in milliseconds
+            
+        Returns:
+            The created task document
         """
         self.logger.info(f"Creating new task: {title}")
 
@@ -427,6 +334,15 @@ class MarvinAPI:
                        ) -> Dict[str, Any]:
         """
         Create a new project directly in the CouchDB database.
+        
+        Args:
+            title: The title of the project
+            parent_id: ID of the parent project
+            due_date: Optional due date for the project (YYYY-MM-DD)
+            priority: Optional priority level
+            
+        Returns:
+            The created project document
         """
         self.logger.info(f"Creating new project: {title}")
 
@@ -500,7 +416,6 @@ class MarvinAPI:
             task = response.json()
             
             # Update the updatedAt timestamp
-            import time
             current_time = int(time.time() * 1000)
             task["updatedAt"] = current_time
             
@@ -508,7 +423,8 @@ class MarvinAPI:
             for key, value in updates.items():
                 task[key] = value
                 
-                
+                if "fieldUpdates" not in task:
+                    task["fieldUpdates"] = {}
                 task["fieldUpdates"][key] = current_time
             
             # Update the document in CouchDB
@@ -521,38 +437,3 @@ class MarvinAPI:
         except Exception as e:
             self.logger.error(f"Error updating task {task_id}: {str(e)}")
             raise
-
-    def _get_friendly_project_id(self, uuid):
-        """
-        Get a friendly project ID (p1, p2, etc.) for a UUID.
-        If the UUID doesn't have a friendly ID yet, create one.
-        """
-        if uuid not in self._project_id_map:
-            friendly_id = f"p{self._next_project_id}"
-            self._project_id_map[uuid] = friendly_id
-            self._project_id_reverse_map[friendly_id] = uuid
-            self._next_project_id += 1
-        return self._project_id_map[uuid]
-    
-    def _get_friendly_task_id(self, uuid):
-        """
-        Get a friendly task ID (t1, t2, etc.) for a UUID.
-        If the UUID doesn't have a friendly ID yet, create one.
-        """
-        if uuid not in self._task_id_map:
-            friendly_id = f"t{self._next_task_id}"
-            self._task_id_map[uuid] = friendly_id
-            self._task_id_reverse_map[friendly_id] = uuid
-            self._next_task_id += 1
-        return self._task_id_map[uuid]
-    
-    def get_real_id(self, friendly_id):
-        """
-        Convert a friendly ID (p1, t1, etc.) back to the real UUID.
-        Returns None if the friendly ID is not found.
-        """
-        if friendly_id.startswith('p') and friendly_id in self._project_id_reverse_map:
-            return self._project_id_reverse_map[friendly_id]
-        elif friendly_id.startswith('t') and friendly_id in self._task_id_reverse_map:
-            return self._task_id_reverse_map[friendly_id]
-        return None
