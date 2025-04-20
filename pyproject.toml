@@ -1,10 +1,20 @@
 [project]
 name = "amazing-marvin-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP Server for Amazing Marvin for viewing, adding and editing tasks"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.6.0",
     "requests>=2.32.3",
 ]
+
+[[project.authors]]
+name = "Lucas Soeth"
+email = "lucasoeth@gmail.com"
+
+[project.scripts]
+amazing-marvin-mcp = "amazing_marvin_mcp:main"
+
+[tool.uv]
+package = true
