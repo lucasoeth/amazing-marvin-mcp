@@ -72,7 +72,39 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="list_tasks",
-            description="Get the hierarchical structure of projects and tasks from Amazing Marvin",
+            description="""Get the hierarchical structure of projects and tasks from Amazing Marvin.
+            
+The output structure uses the following abbreviations:
+- "t": Title of the task
+- "due": Due date (YYYY-MM-DD)
+- "est": Time estimate (e.g., "30m" for 30 minutes, "2h" for 2 hours)
+- "pri": Priority level (1-3, with 3 being highest priority)
+- "sub": Subprojects contained within this project
+- "tasks": List of tasks within this project
+
+Example output structure:
+{
+  "Project A": {
+    "pri": 3,
+    "due": "2025-05-01",
+    "tasks": [
+      {"t": "Task 1", "due": "2025-04-25", "est": "2h", "pri": 2},
+      {"t": "Task 2", "est": "30m"}
+    ],
+    "sub": {
+      "Subproject 1": {
+        "tasks": [
+          {"t": "Subtask 1", "due": "2025-04-22"}
+        ]
+      }
+    }
+  },
+  "Inbox": {
+    "tasks": [
+      {"t": "Unsorted task", "est": "1h"}
+    ]
+  }
+}""",
             inputSchema={
                 "type": "object",
                 "properties": {},
