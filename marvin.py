@@ -51,6 +51,12 @@ class MarvinAPI:
         self.session.auth = (self.db_username, self.db_password)
         self.logger.debug(f"Initialized MarvinAPI with database: {self.db_name}")
         
+        # Initialize caches and sequence tracking
+        self._categories_cache = None
+        self._categories_last_seq = '0'
+        self._tasks_cache = None
+        self._tasks_last_seq = '0'
+
     def _validate_env_vars(self):
         """Validate that all required environment variables are set."""
         missing_vars = []
@@ -87,116 +93,145 @@ class MarvinAPI:
             self.logger.error(f"Error connecting to database: {e}")
             return False
 
+    def _check_changes(self, last_seq: str, selector: Dict[str, Any]) -> Optional[str]:
+        """
+        Check the _changes feed for documents matching the selector since last_seq.
+        Returns new last_seq if changes found, or None if no changes.
+        """
+        url = f"{self.base_url}/_changes"
+        params = {
+            'feed': 'normal',
+            'filter': '_selector',
+            'include_docs': 'false',
+            'since': last_seq
+        }
+        try:
+            self.logger.debug(f"Checking changes since {last_seq} with selector: {json.dumps(selector)}")
+            response = self.session.post(url, params=params, json={'selector': selector})
+            response.raise_for_status()
+            changes = response.json()
+            new_last_seq = str(changes.get('last_seq'))
+            if not changes.get('results'):
+                self.logger.debug(f"No relevant changes found since {last_seq}. Current seq: {new_last_seq}")
+                return new_last_seq if last_seq == '0' else None
+            else:
+                self.logger.debug(f"Changes found since {last_seq}. New seq: {new_last_seq}")
+                return new_last_seq
+        except Exception as e:
+            self.logger.error(f"Error checking changes feed: {e}")
+            raise
+
     def get_categories(self) -> List[Dict[str, Any]]:
         """
-        Fetch all categories from the CouchDB database.
-        
-        Categories in Amazing Marvin are like folders that contain projects and tasks.
-        By default, only fetches categories that aren't marked as done.
-        Manually removes the fieldUpdates field after retrieval.
-        
-        Returns:
-            List[Dict[str, Any]]: A list of category objects
+        Fetch all categories from the CouchDB database, using a cache invalidated by the _changes feed.
         """
+        category_selector = {
+            "db": "Categories",
+            "$or": [
+                {"done": False},
+                {"done": {"$exists": False}}
+            ]
+        }
         try:
-            # Construct the query to find documents where db field equals "Categories"
-            # and either done=false or done field doesn't exist
-            query = {
-                "selector": {
-                    "db": "Categories",
-                    "$or": [
-                        {"done": False},
-                        {"done": {"$exists": False}}
-                    ]
-                },
-            }
-            
-            # CouchDB's _find endpoint for querying with selectors
+            new_seq = self._check_changes(self._categories_last_seq, category_selector)
+            if new_seq is None and self._categories_cache is not None:
+                self.logger.info("Returning cached categories (no changes detected).")
+                return self._categories_cache
+
+            self.logger.info("Fetching fresh categories (changes detected or cache empty).")
             url = f"{self.base_url}/_find"
-            
+            query = {"selector": category_selector}
             self.logger.debug(f"Fetching categories with query: {json.dumps(query)}")
             response = self.session.post(url, json=query)
             response.raise_for_status()
-            
             result = response.json()
             categories = result.get("docs", [])
-            
-            # Manually remove fieldUpdates field from each category
             for category in categories:
                 if "fieldUpdates" in category:
                     del category["fieldUpdates"]
-            
             self.logger.info(f"Successfully fetched {len(categories)} categories")
-            self.logger.debug(f"Categories: {json.dumps(categories)}")
-            
+            self._categories_cache = categories
+            if new_seq is None:
+                current_seq = self._check_changes('0', category_selector)
+                self._categories_last_seq = current_seq or self._categories_last_seq
+            else:
+                self._categories_last_seq = new_seq
             return categories
         except Exception as e:
             self.logger.error(f"Error fetching categories: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
-                self.logger.error(f"Response content: {e.response.text}")
+            self._categories_cache = None
+            self._categories_last_seq = '0'
             raise
-            
-    def get_tasks(self, parent_id: Optional[str] = None, include_done: bool = False) -> List[Dict[str, Any]]:
+
+    def get_tasks(self, parent_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Fetch tasks from the CouchDB database.
-        
-        If parent_id is provided, only tasks under that parent category/project are returned.
-        Otherwise, all tasks are returned. By default, only incomplete tasks are returned,
-        including those where the done field doesn't exist.
-        Manually removes the fieldUpdates field after retrieval.
-        
-        Args:
-            parent_id (Optional[str]): The ID of the parent category/project
-            include_done (bool): Whether to include completed tasks (default: False)
-            
-        Returns:
-            List[Dict[str, Any]]: A list of task objects
+        Fetch incomplete tasks from the CouchDB database, using a cache for all tasks (when parent_id is None),
+        invalidated by the _changes feed.
         """
+        if parent_id:
+            self.logger.info(f"Fetching tasks for specific parent {parent_id}, bypassing cache.")
+            try:
+                query = {
+                    "selector": {
+                        "db": "Tasks",
+                        "parentId": parent_id,
+                        "$or": [
+                            {"done": False},
+                            {"done": {"$exists": False}}
+                        ]
+                    }
+                }
+                url = f"{self.base_url}/_find"
+                self.logger.debug(f"Fetching tasks for parent {parent_id} with query: {json.dumps(query)}")
+                response = self.session.post(url, json=query)
+                response.raise_for_status()
+                result = response.json()
+                tasks = result.get("docs", [])
+                for task in tasks:
+                    if "fieldUpdates" in task: del task["fieldUpdates"]
+                self.logger.info(f"Successfully fetched {len(tasks)} tasks for parent {parent_id}")
+                return tasks
+            except Exception as e:
+                self.logger.error(f"Error fetching tasks for parent {parent_id}: {str(e)}")
+                raise
+
+        # Always fetch only incomplete tasks
+        task_selector = {
+            "db": "Tasks",
+            "$or": [
+                {"done": False},
+                {"done": {"$exists": False}}
+            ]
+        }
         try:
-            # Base query to find documents where db field equals "Tasks"
-            query = {
-                "selector": {
-                    "db": "Tasks"
-                },
-            }
-            
-            # If we only want incomplete tasks (either done=false or done field doesn't exist)
-            if not include_done:
-                query["selector"]["$or"] = [
-                    {"done": False},
-                    {"done": {"$exists": False}}
-                ]
-                
-            # If parent_id is provided, add it to the selector
-            if parent_id:
-                query["selector"]["parentId"] = parent_id
-                self.logger.debug(f"Fetching tasks for parent ID: {parent_id}")
-            else:
-                self.logger.debug("Fetching all tasks")
-            
-            # CouchDB's _find endpoint for querying with selectors
+            new_seq = self._check_changes(self._tasks_last_seq, task_selector)
+            if new_seq is None and self._tasks_cache is not None:
+                self.logger.info("Returning cached tasks (no changes detected).")
+                return self._tasks_cache
+
+            self.logger.info("Fetching fresh tasks (changes detected or cache empty).")
             url = f"{self.base_url}/_find"
-            
-            self.logger.debug(f"Fetching tasks with query: {json.dumps(query)}")
+            query = {"selector": task_selector}
+            self.logger.debug(f"Fetching all tasks with query: {json.dumps(query)}")
             response = self.session.post(url, json=query)
             response.raise_for_status()
-            
             result = response.json()
             tasks = result.get("docs", [])
-            
-            # Manually remove fieldUpdates field from each task
             for task in tasks:
                 if "fieldUpdates" in task:
                     del task["fieldUpdates"]
-            
-            self.logger.info(f"Successfully fetched {len(tasks)} tasks")
-            self.logger.debug(f"First few tasks: {json.dumps(tasks[:3]) if tasks else '[]'}")
-            
+            self.logger.info(f"Successfully fetched {len(tasks)} tasks.")
+            self._tasks_cache = tasks
+            if new_seq is None:
+                current_seq = self._check_changes('0', task_selector)
+                self._tasks_last_seq = current_seq or self._tasks_last_seq
+            else:
+                self._tasks_last_seq = new_seq
             return tasks
         except Exception as e:
             self.logger.error(f"Error fetching tasks: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
-                self.logger.error(f"Response content: {e.response.text}")
+            self._tasks_cache = None
+            self._tasks_last_seq = '0'
             raise
 
     def _convert_time_estimate(self, ms):
@@ -230,7 +265,7 @@ class MarvinAPI:
         """
         # Fetch all categories and tasks
         categories = self.get_categories()
-        tasks = self.get_tasks(include_done=False)
+        tasks = self.get_tasks()
 
         # Find root categories (parentId is "root" or missing)
         root_categories = [cat for cat in categories if cat.get("parentId") == "root" or not cat.get("parentId")]
