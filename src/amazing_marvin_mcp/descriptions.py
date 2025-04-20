@@ -48,12 +48,14 @@ Example output structure:
 
 CREATE_TASK_DESCRIPTION = """Create a new task in Amazing Marvin.
 
-You can create tasks with various properties and place them in specific projects.
+You can create tasks with various properties and place them in specific projects using their friendly IDs.
+Time estimates can be specified in human-readable format like "30m", "1.5h", or "1h 30m".
 """
 
 UPDATE_TASK_DESCRIPTION = """Update an existing task in Amazing Marvin.
 
 You can update any properties of a task using its friendly ID (t1, t2, etc.).
+Time estimates can be specified in human-readable format like "30m", "1.5h", or "1h 30m".
 """
 
 TEST_CONNECTION_DESCRIPTION = """Test the connection to the Amazing Marvin database.
@@ -77,7 +79,7 @@ CREATE_TASK_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": "Optional ID of the parent project. Can use a friendly ID (p1, p2, etc.) or the full UUID. Defaults to 'unassigned' (Inbox)."
+            "description": "Friendly ID of the parent project (p1, p2, etc.). Defaults to the Inbox."
         },
         "day": {
             "type": "string",
@@ -108,7 +110,7 @@ UPDATE_TASK_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": "New parent project ID (can use friendly ID p1, p2, etc.)"
+            "description": "New parent project friendly ID (p1, p2, etc.)"
         },
         "done": {
             "type": "boolean",

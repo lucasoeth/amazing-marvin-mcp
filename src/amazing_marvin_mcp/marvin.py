@@ -2,7 +2,6 @@ import os
 import json
 import requests
 import logging
-import re
 from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 import time
