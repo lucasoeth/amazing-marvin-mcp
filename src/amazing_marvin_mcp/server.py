@@ -7,9 +7,9 @@ from .adapter import MarvinAdapter
 from .descriptions import (
     LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
     CREATE_PROJECT_DESCRIPTION, UPDATE_TASK_DESCRIPTION, 
-    SCHEDULE_TASK_DESCRIPTION, TEST_CONNECTION_DESCRIPTION, 
+    SCHEDULE_TASK_DESCRIPTION, 
     LIST_TASKS_SCHEMA, CREATE_TASK_SCHEMA, CREATE_PROJECT_SCHEMA,
-    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA, TEST_CONNECTION_SCHEMA
+    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA
 )
 
 # Create server
@@ -138,19 +138,6 @@ async def handle_update_task(arguments: dict) -> list[types.TextContent]:
         error_msg = {"error": str(e)}
         return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
 
-async def handle_test_connection(arguments: dict) -> list[types.TextContent]:
-    """
-    Handle the test_connection tool. Tests the connection to the Amazing Marvin database.
-    """
-    try:
-        # Use the adapter to test the connection
-        result = marvin_adapter.test_connection()
-        
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
-
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     """List available tools."""
@@ -176,21 +163,9 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema=UPDATE_TASK_SCHEMA
         ),
         types.Tool(
-            name="test_connection",
-            description=TEST_CONNECTION_DESCRIPTION,
-            inputSchema=TEST_CONNECTION_SCHEMA
-        ),
-        types.Tool(
             name="schedule_task",
-            description="Schedules a task for a specific day.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string"},
-                    "day": {"type": "string", "format": "date"}
-                },
-                "required": ["task_id", "day"]
-            }
+            description=SCHEDULE_TASK_DESCRIPTION,
+            inputSchema=SCHEDULE_TASK_SCHEMA
         )
     ]
 
@@ -208,8 +183,6 @@ async def call_tool(
         return await handle_create_project(arguments)
     elif name == "update_task":
         return await handle_update_task(arguments)
-    elif name == "test_connection":
-        return await handle_test_connection(arguments)
     elif name == "schedule_task":
         return await handle_schedule_task(arguments)
     else:

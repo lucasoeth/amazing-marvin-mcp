@@ -69,11 +69,6 @@ SCHEDULE_TASK_DESCRIPTION = """Schedule a task for a specific day in Amazing Mar
 This tool allows you to specify which day a task should be worked on (as opposed to when it's due).
 """
 
-TEST_CONNECTION_DESCRIPTION = """Test the connection to the Amazing Marvin database.
-
-This tool helps verify that the MCP server can communicate with the Amazing Marvin CouchDB database.
-"""
-
 # Input schemas for each tool
 LIST_TASKS_SCHEMA = {
     "type": "object",
@@ -167,10 +162,4 @@ SCHEDULE_TASK_SCHEMA = {
         }
     },
     "required": ["task_id", "day"]
-}
-
-TEST_CONNECTION_SCHEMA = {
-    "type": "object",
-    "properties": {},
-    "required": []
 }
