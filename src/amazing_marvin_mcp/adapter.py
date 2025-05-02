@@ -13,6 +13,38 @@ from typing import Dict, List, Any, Optional, Tuple
 from .marvin import MarvinAPI
 
 
+class MarvinAdapterError(Exception):
+    """Base exception class for MarvinAdapter errors."""
+    pass
+
+
+class InvalidProjectIDError(MarvinAdapterError):
+    """Error raised when an invalid parent ID is provided."""
+    def __init__(self, parent_id: str, message: Optional[str] = None):
+        self.parent_id = parent_id
+        if message is None:
+            message = f"Invalid project ID: '{parent_id}'. Use a valid project ID (p1, p2, etc.) from list_tasks results."
+        super().__init__(message)
+
+
+class InvalidTaskIDError(MarvinAdapterError):
+    """Error raised when an invalid task ID is provided."""
+    def __init__(self, task_id: str, message: Optional[str] = None):
+        self.task_id = task_id
+        if message is None:
+            message = f"Invalid task ID: '{task_id}'. Use a valid task ID (t1, t2, etc.) from list_tasks results."
+        super().__init__(message)
+
+
+class InvalidTimeEstimateError(MarvinAdapterError):
+    """Error raised when an invalid time estimate format is provided."""
+    def __init__(self, time_estimate: str, message: Optional[str] = None):
+        self.time_estimate = time_estimate
+        if message is None:
+            message = f"Invalid time estimate format: '{time_estimate}'. Use formats like '30m', '1.5h', or '1h 30m'."
+        super().__init__(message)
+
+
 class MarvinAdapter:
     """
     Adapter class that provides LLM-friendly interfaces to the MarvinAPI.
@@ -45,8 +77,11 @@ class MarvinAdapter:
         # Maps real UUIDs to friendly IDs (t1, t2, etc.)
         self._task_id_map = {}
         self._task_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
-        self._next_project_id = 1
+        self._next_project_id = 1  # Start from p1 (p0 is reserved for Inbox)
         self._next_task_id = 1
+        
+        # Add p0 as a special ID for the Inbox/unassigned
+        self._project_id_reverse_map["p0"] = "unassigned"
 
     def _get_friendly_project_id(self, uuid: str) -> str:
         """
@@ -78,19 +113,45 @@ class MarvinAdapter:
             self._next_task_id += 1
         return self._task_id_map[uuid]
 
-    def get_real_id(self, friendly_id: str) -> Optional[str]:
+    def get_real_id(self, friendly_id: str) -> str:
         """
         Convert a friendly ID (p1, t1, etc.) back to the real UUID.
-        Returns None if the friendly ID is not found.
+        Also handles special values like 'unassigned' and 'root'.
+        
+        Args:
+            friendly_id: A friendly ID or special value.
+            
+        Returns:
+            The real UUID or special value.
+            
+        Raises:
+            InvalidProjectIDError: If friendly_id is a project ID but invalid.
+            InvalidTaskIDError: If friendly_id is a task ID but invalid.
         """
+        print(f'frindly_id: >{friendly_id}<')
         if not friendly_id:
-            return None
-
-        if friendly_id.startswith('p') and friendly_id in self._project_id_reverse_map:
-            return self._project_id_reverse_map[friendly_id]
-        elif friendly_id.startswith('t') and friendly_id in self._task_id_reverse_map:
-            return self._task_id_reverse_map[friendly_id]
-        return None
+            raise MarvinAdapterError("ID cannot be empty.")
+        
+        # Special values that are allowed
+        SPECIAL_VALUES = ["unassigned", "root"]
+        if friendly_id in SPECIAL_VALUES:
+            return friendly_id
+            
+        if friendly_id.startswith('p'):
+            # This is a project ID
+            if friendly_id in self._project_id_reverse_map:
+                return self._project_id_reverse_map[friendly_id]
+            else:
+                raise InvalidProjectIDError(friendly_id)
+        elif friendly_id.startswith('t'):
+            # This is a task ID
+            if friendly_id in self._task_id_reverse_map:
+                return self._task_id_reverse_map[friendly_id]
+            else:
+                raise InvalidTaskIDError(friendly_id)
+        else:
+            # It's neither a special value nor a valid friendly ID format
+            raise InvalidProjectIDError(friendly_id)
 
     def parse_time_estimate(self, time_str: str) -> Optional[int]:
         """
@@ -101,7 +162,10 @@ class MarvinAdapter:
             time_str: A string like "30m", "1.5h", "1h 30m"
 
         Returns:
-            Time in milliseconds or None if parsing fails
+            Time in milliseconds
+            
+        Raises:
+            InvalidTimeEstimateError: If the time estimate format is invalid
         """
         if not time_str:
             return None
@@ -115,16 +179,21 @@ class MarvinAdapter:
                 minutes = self._parse_single_time_part(part)
                 if minutes is not None:
                     total_minutes += minutes
+                else:
+                    raise InvalidTimeEstimateError(time_str)
         else:
             # Handle single unit like "1.5h" or "30m"
             minutes = self._parse_single_time_part(time_str)
             if minutes is not None:
                 total_minutes = minutes
+            else:
+                raise InvalidTimeEstimateError(time_str)
 
         if total_minutes > 0:
             # Convert minutes to milliseconds
             return int(total_minutes * 60 * 1000)
-        return None
+        
+        raise InvalidTimeEstimateError(time_str)
 
     def _parse_single_time_part(self, part: str) -> Optional[float]:
         """Parse a single time part like "1.5h" or "30m" into minutes."""
@@ -300,19 +369,21 @@ class MarvinAdapter:
 
         Args:
             title: The title of the task
-            parent_id: Optional friendly ID (p1) or UUID of the parent project
+            parent_id: Friendly ID (p1) or special value 'unassigned' for the parent project
             due_date: Optional due date for the task (YYYY-MM-DD)
             time_estimate: Optional time estimate in human format (e.g., "30m", "1.5h")
 
         Returns:
             Dictionary with the created task info and its friendly ID
+            
+        Raises:
+            MarvinAdapterError: If any parameters are invalid
         """
-        # Convert parent_id from friendly ID if needed
-        real_parent_id = parent_id
-        if parent_id and parent_id.startswith('p'):
-            converted_id = self.get_real_id(parent_id)
-            if converted_id:
-                real_parent_id = converted_id
+        if not title:
+            raise MarvinAdapterError("Task title cannot be empty")
+            
+        # Convert parent_id from friendly ID to real ID
+        real_parent_id = self.get_real_id(parent_id)
 
         # Convert time estimate from human-readable to milliseconds
         time_ms = None
@@ -356,13 +427,15 @@ class MarvinAdapter:
 
         Returns:
             Dictionary with the created project info and its friendly ID
+            
+        Raises:
+            MarvinAdapterError: If any parameters are invalid
         """
-        # Convert parent_id from friendly ID if needed
-        real_parent_id = parent_id
-        if parent_id and parent_id.startswith('p'):
-            converted_id = self.get_real_id(parent_id)
-            if converted_id:
-                real_parent_id = converted_id
+        if not title:
+            raise MarvinAdapterError("Project title cannot be empty")
+            
+        # Convert parent_id from friendly ID to real ID
+        real_parent_id = self.get_real_id(parent_id)
 
         # Create the project using the API
         api_result = self.api.create_project(
@@ -398,17 +471,17 @@ class MarvinAdapter:
 
         Returns:
             Dictionary with the updated task info
+            
+        Raises:
+            MarvinAdapterError: If any parameters are invalid
         """
-        # Convert task_id from friendly ID if needed
-        real_task_id = task_id
-        if task_id and task_id.startswith('t'):
-            converted_id = self.get_real_id(task_id)
-            if converted_id:
-                real_task_id = converted_id
-            else:
-                raise ValueError(f"Task with friendly ID {task_id} not found")
+        if not task_id:
+            raise MarvinAdapterError("Task ID cannot be empty")
+            
+        # Convert task_id from friendly ID to real ID
+        real_task_id = self.get_real_id(task_id) if task_id.startswith('t') else task_id
 
-        # Process special fields like time_estimate
+        # Process special fields like time_estimate and parent_id
         api_updates = updates.copy()
 
         if "time_estimate" in updates:
@@ -416,6 +489,12 @@ class MarvinAdapter:
             time_ms = self.parse_time_estimate(time_str)
             api_updates["timeEstimate"] = time_ms
             del api_updates["time_estimate"]
+            
+        if "parent_id" in updates:
+            parent_id = updates["parent_id"]
+            real_parent_id = self.get_real_id(parent_id)
+            api_updates["parentId"] = real_parent_id
+            del api_updates["parent_id"]
 
         # Update the task using the API
         api_result = self.api.update_task(real_task_id, api_updates)
@@ -448,15 +527,18 @@ class MarvinAdapter:
 
         Returns:
             Dictionary with the scheduled task info
+            
+        Raises:
+            MarvinAdapterError: If any parameters are invalid
         """
-        # Convert task_id from friendly ID
-        real_task_id = task_id
-        if task_id and task_id.startswith('t'):
-            converted_id = self.get_real_id(task_id)
-            if converted_id:
-                real_task_id = converted_id
-            else:
-                raise ValueError(f"Task with friendly ID {task_id} not found")
+        if not task_id:
+            raise MarvinAdapterError("Task ID cannot be empty")
+            
+        if not day:
+            raise MarvinAdapterError("Day cannot be empty and must be in YYYY-MM-DD format")
+            
+        # Convert task_id from friendly ID to real ID
+        real_task_id = self.get_real_id(task_id) if task_id.startswith('t') else task_id
 
         # Create update with just the day field
         updates = {"day": day}

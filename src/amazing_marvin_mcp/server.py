@@ -2,8 +2,11 @@ from mcp.server import Server
 import mcp.server.stdio
 from mcp import types
 import json
+import logging
 
-from .adapter import MarvinAdapter
+from .adapter import (
+    MarvinAdapter
+)
 from .descriptions import (
     LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
     CREATE_PROJECT_DESCRIPTION, UPDATE_TASK_DESCRIPTION, 
@@ -21,44 +24,32 @@ async def handle_list_tasks(arguments: dict) -> list[types.TextContent]:
     """
     Handle the list_tasks tool. Gets the hierarchical structure of projects and tasks.
     """
-    try:
-        # Get the hierarchical structure using the adapter
-        hierarchy_str = marvin_adapter.build_hierarchy_string()
-        
-        return [types.TextContent(
-            type="text", 
-            text=hierarchy_str
-        )]
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    # Get the hierarchical structure using the adapter
+    hierarchy_str = marvin_adapter.build_hierarchy_string()
+    
+    return [types.TextContent(
+        type="text", 
+        text=hierarchy_str
+    )]
 
 async def handle_create_task(arguments: dict) -> list[types.TextContent]:
     """
     Handle the create_task tool. Creates a new task in Amazing Marvin.
     """
     title = arguments.get("title", "")
-    parent_id = arguments.get("parent_id", "unassigned")
+    parent_id = arguments.get("parent_id", "") or "unassigned"
     due_date = arguments.get("due_date", None)
     time_estimate = arguments.get("time_estimate", None)
     
-    if not title:
-        error_msg = {"error": "Title is required"}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    # Use the adapter to create the task with LLM-friendly parameters
+    result = marvin_adapter.create_task(
+        title=title,
+        parent_id=parent_id,
+        due_date=due_date,
+        time_estimate=time_estimate
+    )
     
-    try:
-        # Use the adapter to create the task with LLM-friendly parameters
-        result = marvin_adapter.create_task(
-            title=title,
-            parent_id=parent_id,
-            due_date=due_date,
-            time_estimate=time_estimate
-        )
-        
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 async def handle_schedule_task(arguments: dict) -> list[types.TextContent]:
     """
@@ -67,49 +58,29 @@ async def handle_schedule_task(arguments: dict) -> list[types.TextContent]:
     task_id = arguments.get("task_id", "")
     day = arguments.get("day", "")
     
-    if not task_id:
-        error_msg = {"error": "Task ID is required"}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    # Use the adapter to schedule the task
+    result = marvin_adapter.schedule_task(task_id, day)
     
-    if not day:
-        error_msg = {"error": "Day is required (format: YYYY-MM-DD)"}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
-    
-    try:
-        # Use the adapter to schedule the task
-        result = marvin_adapter.schedule_task(task_id, day)
-        
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 async def handle_create_project(arguments: dict) -> list[types.TextContent]:
     """
     Handle the create_project tool. Creates a new project in Amazing Marvin.
     """
     title = arguments.get("title", "")
-    parent_id = arguments.get("parent_id", "unassigned")
+    parent_id = arguments.get("parent_id", "") or "unassigned"
     due_date = arguments.get("due_date", None)
     priority = arguments.get("priority", None)
     
-    if not title:
-        error_msg = {"error": "Title is required"}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    # Use the adapter to create the project with LLM-friendly parameters
+    result = marvin_adapter.create_project(
+        title=title,
+        parent_id=parent_id,
+        due_date=due_date,
+        priority=priority
+    )
     
-    try:
-        # Use the adapter to create the project with LLM-friendly parameters
-        result = marvin_adapter.create_project(
-            title=title,
-            parent_id=parent_id,
-            due_date=due_date,
-            priority=priority
-        )
-        
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 async def handle_update_task(arguments: dict) -> list[types.TextContent]:
     """
@@ -117,25 +88,13 @@ async def handle_update_task(arguments: dict) -> list[types.TextContent]:
     """
     task_id = arguments.get("task_id", "")
     
-    if not task_id:
-        error_msg = {"error": "Task ID is required"}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
-    
     # Create updates dictionary from all other arguments
     updates = {k: v for k, v in arguments.items() if k != "task_id"}
     
-    if not updates:
-        error_msg = {"error": "No updates provided"}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    # Use the adapter to update the task
+    result = marvin_adapter.update_task(task_id, updates)
     
-    try:
-        # Use the adapter to update the task
-        result = marvin_adapter.update_task(task_id, updates)
-        
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-    except Exception as e:
-        error_msg = {"error": str(e)}
-        return [types.TextContent(type="text", text=json.dumps(error_msg, indent=2))]
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
