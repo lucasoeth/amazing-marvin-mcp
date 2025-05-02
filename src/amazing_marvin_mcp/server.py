@@ -37,7 +37,7 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
     Handle the create_task tool. Creates a new task in Amazing Marvin.
     """
     title = arguments.get("title", "")
-    parent_id = arguments.get("parent_id", "") or "unassigned"
+    parent_id = arguments.get("parent_id", "") or "p0"
     due_date = arguments.get("due_date", None)
     time_estimate = arguments.get("time_estimate", None)
     
@@ -68,7 +68,7 @@ async def handle_create_project(arguments: dict) -> list[types.TextContent]:
     Handle the create_project tool. Creates a new project in Amazing Marvin.
     """
     title = arguments.get("title", "")
-    parent_id = arguments.get("parent_id", "") or "unassigned"
+    parent_id = arguments.get("parent_id", "") or "p0"
     due_date = arguments.get("due_date", None)
     priority = arguments.get("priority", None)
     

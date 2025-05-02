@@ -82,6 +82,42 @@ class MarvinAdapter:
         
         # Add p0 as a special ID for the Inbox/unassigned
         self._project_id_reverse_map["p0"] = "unassigned"
+        self._project_id_map["unassigned"] = "p0"
+        
+        # Initialize ID maps deterministically based on creation date
+        self.initialize_id_maps()
+
+    def initialize_id_maps(self):
+        """
+        Initialize ID maps deterministically by sorting tasks and projects by createdAt timestamp.
+        This ensures consistent ID assignments between sessions.
+        """
+        self.logger.info("Initializing ID maps deterministically based on createdAt timestamp")
+        
+        # Fetch all categories and tasks
+        try:
+            categories = self.api.get_categories()
+            tasks = self.api.get_tasks()
+            
+            # Sort categories by createdAt timestamp (oldest first)
+            sorted_categories = sorted(categories, key=lambda c: c.get('createdAt', 0))
+            
+            # Assign project IDs based on sorted order
+            for category in sorted_categories:
+                self._get_friendly_project_id(category["_id"])
+                
+            # Sort tasks by createdAt timestamp (oldest first)
+            sorted_tasks = sorted(tasks, key=lambda t: t.get('createdAt', 0))
+            
+            # Assign task IDs based on sorted order
+            for task in sorted_tasks:
+                self._get_friendly_task_id(task["_id"])
+                
+            self.logger.info(f"Successfully initialized ID maps with {len(self._project_id_map)} projects and {len(self._task_id_map)} tasks")
+        except Exception as e:
+            self.logger.error(f"Error initializing ID maps: {str(e)}")
+            # Continue with empty maps, they will be populated as needed
+            pass
 
     def _get_friendly_project_id(self, uuid: str) -> str:
         """
@@ -113,45 +149,51 @@ class MarvinAdapter:
             self._next_task_id += 1
         return self._task_id_map[uuid]
 
-    def get_real_id(self, friendly_id: str) -> str:
+    def get_real_project_id(self, friendly_id: str) -> str:
         """
-        Convert a friendly ID (p1, t1, etc.) back to the real UUID.
-        Also handles special values like 'unassigned' and 'root'.
+        Convert a project friendly ID (p0, p1, etc.) back to the real UUID.
         
         Args:
-            friendly_id: A friendly ID or special value.
+            friendly_id: A project friendly ID.
             
         Returns:
-            The real UUID or special value.
+            The real UUID.
             
         Raises:
-            InvalidProjectIDError: If friendly_id is a project ID but invalid.
-            InvalidTaskIDError: If friendly_id is a task ID but invalid.
+            InvalidProjectIDError: If friendly_id is invalid.
         """
-        print(f'frindly_id: >{friendly_id}<')
         if not friendly_id:
-            raise MarvinAdapterError("ID cannot be empty.")
-        
-        # Special values that are allowed
-        SPECIAL_VALUES = ["unassigned", "root"]
-        if friendly_id in SPECIAL_VALUES:
-            return friendly_id
+            raise MarvinAdapterError("Project ID cannot be empty.")
             
-        if friendly_id.startswith('p'):
-            # This is a project ID
-            if friendly_id in self._project_id_reverse_map:
-                return self._project_id_reverse_map[friendly_id]
-            else:
-                raise InvalidProjectIDError(friendly_id)
-        elif friendly_id.startswith('t'):
-            # This is a task ID
-            if friendly_id in self._task_id_reverse_map:
-                return self._task_id_reverse_map[friendly_id]
-            else:
-                raise InvalidTaskIDError(friendly_id)
+        if friendly_id in self._project_id_reverse_map:
+            return self._project_id_reverse_map[friendly_id]
         else:
-            # It's neither a special value nor a valid friendly ID format
             raise InvalidProjectIDError(friendly_id)
+            
+    def get_real_task_id(self, friendly_id: str) -> str:
+        """
+        Convert a task friendly ID (t1, t2, etc.) back to the real UUID.
+        
+        Args:
+            friendly_id: A task friendly ID.
+            
+        Returns:
+            The real UUID.
+            
+        Raises:
+            InvalidTaskIDError: If friendly_id is invalid.
+        """
+        if not friendly_id:
+            raise MarvinAdapterError("Task ID cannot be empty.")
+        
+        # Task ID must start with t
+        if not friendly_id.startswith('t'):
+            raise InvalidTaskIDError(friendly_id)
+            
+        if friendly_id in self._task_id_reverse_map:
+            return self._task_id_reverse_map[friendly_id]
+        else:
+            raise InvalidTaskIDError(friendly_id)
 
     def parse_time_estimate(self, time_str: str) -> Optional[int]:
         """
@@ -310,12 +352,11 @@ class MarvinAdapter:
 
             return cdata
 
-        hierarchy = {rc.get("title", "Untitled Category"): process_category_recursive(
-            rc) for rc in root_categories}
+        hierarchy = {}
 
         # Add synthetic Inbox for categories and tasks with parentId 'unassigned'
         if inbox_categories or inbox_tasks:
-            inbox_dict = {}
+            inbox_dict = {"id": "p0"}  # Assign p0 ID to the Inbox
             if inbox_categories:
                 inbox_dict["sub"] = {cat.get("title", "Untitled Category"): process_category_recursive(
                     cat) for cat in inbox_categories}
@@ -323,6 +364,10 @@ class MarvinAdapter:
                 inbox_dict["tasks"] = [
                     self._process_task(t) for t in inbox_tasks]
             hierarchy["Inbox"] = inbox_dict
+
+
+        hierarchy.update({rc.get("title", "Untitled Category"): process_category_recursive(
+            rc) for rc in root_categories})
 
         return hierarchy
 
@@ -362,14 +407,14 @@ class MarvinAdapter:
 
         return json_str
 
-    def create_task(self, title: str, parent_id: str = "unassigned", due_date: Optional[str] = None, 
+    def create_task(self, title: str, parent_id: str, due_date: Optional[str] = None, 
                     time_estimate: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new task with LLM-friendly parameters.
 
         Args:
             title: The title of the task
-            parent_id: Friendly ID (p1) or special value 'unassigned' for the parent project
+            parent_id: Friendly ID (p1) for the parent project
             due_date: Optional due date for the task (YYYY-MM-DD)
             time_estimate: Optional time estimate in human format (e.g., "30m", "1.5h")
 
@@ -383,7 +428,7 @@ class MarvinAdapter:
             raise MarvinAdapterError("Task title cannot be empty")
             
         # Convert parent_id from friendly ID to real ID
-        real_parent_id = self.get_real_id(parent_id)
+        real_parent_id = self.get_real_project_id(parent_id)
 
         # Convert time estimate from human-readable to milliseconds
         time_ms = None
@@ -414,14 +459,14 @@ class MarvinAdapter:
             "message": f"Task '{title}' created successfully with ID {friendly_id}"
         }
 
-    def create_project(self, title: str, parent_id: str = "unassigned",
+    def create_project(self, title: str, parent_id: str,
                        due_date: Optional[str] = None, priority: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new project with LLM-friendly parameters.
 
         Args:
             title: The title of the project
-            parent_id: Optional friendly ID (p1) or UUID of the parent project
+            parent_id: Friendly ID (p1) for the parent project
             due_date: Optional due date for the project (YYYY-MM-DD)
             priority: Optional priority level (1-3, with 3 being highest)
 
@@ -435,7 +480,7 @@ class MarvinAdapter:
             raise MarvinAdapterError("Project title cannot be empty")
             
         # Convert parent_id from friendly ID to real ID
-        real_parent_id = self.get_real_id(parent_id)
+        real_parent_id = self.get_real_project_id(parent_id)
 
         # Create the project using the API
         api_result = self.api.create_project(
@@ -479,7 +524,7 @@ class MarvinAdapter:
             raise MarvinAdapterError("Task ID cannot be empty")
             
         # Convert task_id from friendly ID to real ID
-        real_task_id = self.get_real_id(task_id) if task_id.startswith('t') else task_id
+        real_task_id = self.get_real_task_id(task_id)
 
         # Process special fields like time_estimate and parent_id
         api_updates = updates.copy()
@@ -492,7 +537,7 @@ class MarvinAdapter:
             
         if "parent_id" in updates:
             parent_id = updates["parent_id"]
-            real_parent_id = self.get_real_id(parent_id)
+            real_parent_id = self.get_real_project_id(parent_id)
             api_updates["parentId"] = real_parent_id
             del api_updates["parent_id"]
 
@@ -538,7 +583,7 @@ class MarvinAdapter:
             raise MarvinAdapterError("Day cannot be empty and must be in YYYY-MM-DD format")
             
         # Convert task_id from friendly ID to real ID
-        real_task_id = self.get_real_id(task_id) if task_id.startswith('t') else task_id
+        real_task_id = self.get_real_task_id(task_id)
 
         # Create update with just the day field
         updates = {"day": day}
