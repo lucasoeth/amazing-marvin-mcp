@@ -48,13 +48,13 @@ Example output structure:
 
 CREATE_TASK_DESCRIPTION = """Create a new task in Amazing Marvin.
 
-You can create tasks with various properties and place them in specific projects using their friendly IDs.
+You can create tasks with various properties and place them in specific projects using their IDs.
 Time estimates can be specified in human-readable format like "30m", "1.5h", or "1h 30m".
 """
 
 CREATE_PROJECT_DESCRIPTION = """Create a new project in Amazing Marvin.
 
-You can create projects with various properties and place them within other projects using friendly IDs.
+You can create projects with various properties and place them within other projects using IDs.
 Projects can contain tasks and other subprojects.
 """
 
@@ -85,7 +85,10 @@ CREATE_TASK_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": "Friendly ID of the parent project (p1, p2, etc.). Defaults to the Inbox."
+            "description": """Optional ID of the parent project (e.g., "p1", "p2") where the task should be created. 
+  * Must be a valid project ID in the format "p1", "p2", etc.
+  * If this parameter is not provided, the task will be created in the Inbox.
+"""
         },
         "due_date": {
             "type": "string",
@@ -108,7 +111,10 @@ CREATE_PROJECT_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": "Friendly ID of the parent project (p1, p2, etc.). Defaults to the Inbox."
+            "description": """Optional ID of the parent project (e.g., "p1", "p2") where the task should be created. 
+  * Must be a valid project ID in the format "p1", "p2", etc.
+  * If this parameter is not provided, the task will be created in the Inbox.
+"""
         },
         "due_date": {
             "type": "string",
