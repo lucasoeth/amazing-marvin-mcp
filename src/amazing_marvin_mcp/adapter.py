@@ -513,13 +513,19 @@ class MarvinAdapter:
             "message": f"Project '{title}' created successfully with ID {friendly_id}"
         }
 
-    def update_task(self, task_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    def update_task(self, task_id: str, title: Optional[str] = None, parent_id: Optional[str] = None, 
+                   due_date: Optional[str] = None, time_estimate: Optional[str] = None, 
+                   priority: Optional[str] = None) -> Dict[str, Any]:
         """
-        Update a task using its friendly ID or UUID.
+        Update a task using its friendly ID.
 
         Args:
-            task_id: The friendly ID (t1) or UUID of the task to update
-            updates: Dictionary with fields to update
+            task_id: The friendly ID (t1) of the task to update
+            title: New title for the task
+            parent_id: New parent project friendly ID (p1, p2, etc.)
+            due_date: New due date for the task (YYYY-MM-DD)
+            time_estimate: New time estimate in human-readable format (e.g., '30m', '1.5h')
+            priority: New priority level (1-3, with 3 being highest)
 
         Returns:
             Dictionary with the updated task info
@@ -533,39 +539,71 @@ class MarvinAdapter:
         # Convert task_id from friendly ID to real ID
         real_task_id = self.get_real_task_id(task_id)
 
-        # Process special fields like time_estimate and parent_id
-        api_updates = updates.copy()
+        # Process special fields and build API updates
+        api_updates = {}
 
-        if "time_estimate" in updates:
-            time_str = updates["time_estimate"]
-            time_ms = self.parse_time_estimate(time_str)
-            api_updates["timeEstimate"] = time_ms
-            del api_updates["time_estimate"]
+        # Handle title if provided
+        if title is not None:
+            if not title:
+                raise MarvinAdapterError("Task title cannot be empty")
+            api_updates["title"] = title
+
+        # Handle time_estimate if provided
+        if time_estimate is not None:
+            if time_estimate:
+                time_ms = self.parse_time_estimate(time_estimate)
+                api_updates["timeEstimate"] = time_ms
+            else:
+                api_updates["timeEstimate"] = None
             
-        if "parent_id" in updates:
-            parent_id = updates["parent_id"]
-            real_parent_id = self.get_real_project_id(parent_id)
-            api_updates["parentId"] = real_parent_id
-            del api_updates["parent_id"]
+        # Handle parent_id if provided
+        if parent_id is not None:
+            if parent_id:
+                real_parent_id = self.get_real_project_id(parent_id)
+                api_updates["parentId"] = real_parent_id
+            else:
+                api_updates["parentId"] = "unassigned"
+                
+        # Handle due_date if provided
+        if due_date is not None:
+            api_updates["dueDate"] = due_date
+            
+        # Handle priority if provided
+        if priority is not None:
+            if priority and priority not in ["1", "2", "3", 1, 2, 3]:
+                raise MarvinAdapterError(f"Invalid priority value: {priority}. Must be 1, 2, or 3 (with 3 being highest).")
+            api_updates["isStarred"] = priority
 
         # Update the task using the API
         api_result = self.api.update_task(real_task_id, api_updates)
 
-        # Get the friendly ID
+        # Get the task ID and assign a friendly ID
         friendly_id = self._get_friendly_task_id(real_task_id)
 
-        # Create LLM-friendly response
+        # Return LLM-friendly result with only the fields that were updated
         response = {
             "task": {
-                "title": api_result.get("title", ""),
-                "id": friendly_id
+                "id": friendly_id,
+                "title": api_result.get("title", "")
             },
             "message": f"Task updated successfully"
         }
 
-        # Add any updated fields to the response
-        for key, value in updates.items():
-            response["task"][key] = value
+        # Add updated fields to the response
+        if title is not None:
+            response["task"]["title"] = title
+        
+        if parent_id is not None:
+            response["task"]["parent_id"] = parent_id
+            
+        if due_date is not None:
+            response["task"]["due_date"] = due_date
+            
+        if time_estimate is not None:
+            response["task"]["time_estimate"] = time_estimate
+            
+        if priority is not None:
+            response["task"]["priority"] = priority
 
         return response
 

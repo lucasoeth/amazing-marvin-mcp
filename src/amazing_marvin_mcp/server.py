@@ -89,14 +89,29 @@ async def handle_update_task(arguments: dict) -> list[types.TextContent]:
     Handle the update_task tool. Updates an existing task in Amazing Marvin.
     """
     task_id = arguments.get("task_id", "")
+    title = arguments.get("title", None)
+    parent_id = arguments.get("parent_id", None)
+    due_date = arguments.get("due_date", None)
+    time_estimate = arguments.get("time_estimate", None)
+    priority = arguments.get("priority", None)
     
-    # Create updates dictionary from all other arguments
-    updates = {k: v for k, v in arguments.items() if k != "task_id"}
-    
-    # Use the adapter to update the task
-    result = marvin_adapter.update_task(task_id, updates)
-    
-    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    # Use the adapter to update the task with explicit parameters
+    try:
+        result = marvin_adapter.update_task(
+            task_id=task_id,
+            title=title,
+            parent_id=parent_id,
+            due_date=due_date,
+            time_estimate=time_estimate,
+            priority=priority
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_message = {
+            "error": str(e),
+            "message": "Failed to update task"
+        }
+        return [types.TextContent(type="text", text=json.dumps(error_message, indent=2))]
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:

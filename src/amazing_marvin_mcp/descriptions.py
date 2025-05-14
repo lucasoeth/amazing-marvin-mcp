@@ -61,7 +61,7 @@ Projects can contain tasks and other subprojects.
 
 UPDATE_TASK_DESCRIPTION = """Update an existing task in Amazing Marvin.
 
-You can update basic properties of a task such as its title, parent project, due date, and time estimate.
+You can update basic properties of a task such as its title, parent project, due date, time estimate, and priority.
 For scheduling tasks to specific days, use the schedule_task tool instead.
 """
 
@@ -155,6 +155,10 @@ UPDATE_TASK_SCHEMA = {
         "time_estimate": {
             "type": "string",
             "description": "New time estimate in human-readable format (e.g., '30m', '1.5h', '1h 30m')"
+        },
+        "priority": {
+            "type": "string",
+            "description": "New priority level (1-3, with 3 being highest)"
         }
     },
     "required": ["task_id"]
