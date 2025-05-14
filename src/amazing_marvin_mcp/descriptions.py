@@ -50,6 +50,7 @@ CREATE_TASK_DESCRIPTION = """Create a new task in Amazing Marvin.
 
 You can create tasks with various properties and place them in specific projects using their IDs.
 Time estimates can be specified in human-readable format like "30m", "1.5h", or "1h 30m".
+Priority can be set from 1-3, with 3 being the highest priority.
 """
 
 CREATE_PROJECT_DESCRIPTION = """Create a new project in Amazing Marvin.
@@ -97,6 +98,10 @@ CREATE_TASK_SCHEMA = {
         "time_estimate": {
             "type": "string",
             "description": "Optional time estimate in human-readable format (e.g., '30m', '1.5h', '1h 30m')"
+        },
+        "priority": {
+            "type": "string",
+            "description": "Optional priority level (1-3, with 3 being highest)"
         }
     },
     "required": ["title"]

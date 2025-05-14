@@ -408,7 +408,7 @@ class MarvinAdapter:
         return json_str
 
     def create_task(self, title: str, parent_id: str, due_date: Optional[str] = None, 
-                    time_estimate: Optional[str] = None) -> Dict[str, Any]:
+                    time_estimate: Optional[str] = None, priority: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new task with LLM-friendly parameters.
 
@@ -417,6 +417,7 @@ class MarvinAdapter:
             parent_id: Friendly ID (p1) for the parent project
             due_date: Optional due date for the task (YYYY-MM-DD)
             time_estimate: Optional time estimate in human format (e.g., "30m", "1.5h")
+            priority: Optional priority level (1-3, with 3 being highest)
 
         Returns:
             Dictionary with the created task info and its friendly ID
@@ -434,13 +435,18 @@ class MarvinAdapter:
         time_ms = None
         if time_estimate:
             time_ms = self.parse_time_estimate(time_estimate)
+            
+        # Validate priority if provided
+        if priority and priority not in ["1", "2", "3", 1, 2, 3]:
+            raise MarvinAdapterError(f"Invalid priority value: {priority}. Must be 1, 2, or 3 (with 3 being highest).")
 
         # Create the task using the API
         api_result = self.api.create_task(
             title=title,
             parent_id=real_parent_id,
             due_date=due_date,
-            time_estimate=time_ms
+            time_estimate=time_ms,
+            priority=priority
         )
 
         # Get the task ID and assign a friendly ID
@@ -454,7 +460,8 @@ class MarvinAdapter:
                 "id": friendly_id,
                 "parent_id": parent_id,
                 "due_date": due_date,
-                "time_estimate": time_estimate
+                "time_estimate": time_estimate,
+                "priority": priority
             },
             "message": f"Task '{title}' created successfully with ID {friendly_id}"
         }

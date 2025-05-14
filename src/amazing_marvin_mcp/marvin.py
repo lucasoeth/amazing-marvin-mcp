@@ -273,7 +273,8 @@ class MarvinAPI:
             raise
 
     def create_task(self, title: str, parent_id: str = "unassigned", day: Optional[str] = None,
-                    due_date: Optional[str] = None, time_estimate: Optional[int] = None) -> Dict[str, Any]:
+                    due_date: Optional[str] = None, time_estimate: Optional[int] = None,
+                    priority: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new task directly in the CouchDB database.
         
@@ -283,6 +284,7 @@ class MarvinAPI:
             day: Optional day for the task (YYYY-MM-DD)
             due_date: Optional due date for the task (YYYY-MM-DD)
             time_estimate: Optional time estimate in milliseconds
+            priority: Optional priority level (1-3 with 3 being highest)
             
         Returns:
             The created task document
@@ -324,6 +326,8 @@ class MarvinAPI:
             task["dueDate"] = due_date
         if time_estimate:
             task["timeEstimate"] = time_estimate
+        if priority:
+            task["isStarred"] = priority
 
         task["fieldUpdates"] = {}
 

@@ -40,13 +40,15 @@ async def handle_create_task(arguments: dict) -> list[types.TextContent]:
     parent_id = arguments.get("parent_id", "") or "p0"
     due_date = arguments.get("due_date", None)
     time_estimate = arguments.get("time_estimate", None)
+    priority = arguments.get("priority", None)
     
     # Use the adapter to create the task with LLM-friendly parameters
     result = marvin_adapter.create_task(
         title=title,
         parent_id=parent_id,
         due_date=due_date,
-        time_estimate=time_estimate
+        time_estimate=time_estimate,
+        priority=priority
     )
     
     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
