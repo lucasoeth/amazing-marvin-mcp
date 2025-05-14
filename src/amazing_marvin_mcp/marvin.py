@@ -11,7 +11,7 @@ import os
 import json
 import requests
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from dotenv import load_dotenv
 import time
 
@@ -137,6 +137,55 @@ class MarvinAPI:
             self.logger.error(f"Error checking changes feed: {e}")
             raise
 
+    def _fetch_documents(self, 
+                          selector: Dict[str, Any], 
+                          cache: Optional[List[Dict[str, Any]]], 
+                          last_seq: str,
+                          cache_name: str) -> Tuple[List[Dict[str, Any]], str]:
+        """
+        Helper method to fetch documents from CouchDB with caching and change detection.
+        
+        Args:
+            selector: CouchDB selector for the query
+            cache: Current cache for this document type
+            last_seq: Current sequence number for change detection
+            cache_name: Name of the cache for logging (e.g., "tasks", "categories")
+            
+        Returns:
+            Tuple of (documents list, new sequence number)
+        """
+        try:
+            new_seq = self._check_changes(last_seq, selector)
+            if new_seq is None and cache is not None:
+                self.logger.info(
+                    f"Returning cached {cache_name} (no changes detected).")
+                return cache, last_seq
+
+            self.logger.info(
+                f"Fetching fresh {cache_name} (changes detected or cache empty).")
+            url = f"{self.base_url}/_find"
+            query = {"selector": selector}
+            self.logger.debug(
+                f"Fetching {cache_name} with query: {json.dumps(query)}")
+            response = self.session.post(url, json=query)
+            response.raise_for_status()
+            result = response.json()
+            documents = result.get("docs", [])
+            for doc in documents:
+                if "fieldUpdates" in doc:
+                    del doc["fieldUpdates"]
+            self.logger.info(
+                f"Successfully fetched {len(documents)} {cache_name}")
+            
+            if new_seq is None:
+                current_seq = self._check_changes('0', selector)
+                new_seq = current_seq or last_seq
+                
+            return documents, new_seq
+        except Exception as e:
+            self.logger.error(f"Error fetching {cache_name}: {str(e)}")
+            raise
+
     def get_categories(self) -> List[Dict[str, Any]]:
         """
         Fetch all categories from the CouchDB database, using a cache invalidated by the _changes feed.
@@ -152,34 +201,10 @@ class MarvinAPI:
             ]
         }
         try:
-            new_seq = self._check_changes(
-                self._categories_last_seq, category_selector)
-            if new_seq is None and self._categories_cache is not None:
-                self.logger.info(
-                    "Returning cached categories (no changes detected).")
-                return self._categories_cache
-
-            self.logger.info(
-                "Fetching fresh categories (changes detected or cache empty).")
-            url = f"{self.base_url}/_find"
-            query = {"selector": category_selector}
-            self.logger.debug(
-                f"Fetching categories with query: {json.dumps(query)}")
-            response = self.session.post(url, json=query)
-            response.raise_for_status()
-            result = response.json()
-            categories = result.get("docs", [])
-            for category in categories:
-                if "fieldUpdates" in category:
-                    del category["fieldUpdates"]
-            self.logger.info(
-                f"Successfully fetched {len(categories)} categories")
+            categories, new_seq = self._fetch_documents(
+                category_selector, self._categories_cache, self._categories_last_seq, "categories")
             self._categories_cache = categories
-            if new_seq is None:
-                current_seq = self._check_changes('0', category_selector)
-                self._categories_last_seq = current_seq or self._categories_last_seq
-            else:
-                self._categories_last_seq = new_seq
+            self._categories_last_seq = new_seq
             return categories
         except Exception as e:
             self.logger.error(f"Error fetching categories: {str(e)}")
@@ -239,37 +264,71 @@ class MarvinAPI:
             ]
         }
         try:
-            new_seq = self._check_changes(self._tasks_last_seq, task_selector)
-            if new_seq is None and self._tasks_cache is not None:
-                self.logger.info(
-                    "Returning cached tasks (no changes detected).")
-                return self._tasks_cache
-
-            self.logger.info(
-                "Fetching fresh tasks (changes detected or cache empty).")
-            url = f"{self.base_url}/_find"
-            query = {"selector": task_selector}
-            self.logger.debug(
-                f"Fetching all tasks with query: {json.dumps(query)}")
-            response = self.session.post(url, json=query)
-            response.raise_for_status()
-            result = response.json()
-            tasks = result.get("docs", [])
-            for task in tasks:
-                if "fieldUpdates" in task:
-                    del task["fieldUpdates"]
-            self.logger.info(f"Successfully fetched {len(tasks)} tasks.")
+            tasks, new_seq = self._fetch_documents(
+                task_selector, self._tasks_cache, self._tasks_last_seq, "tasks")
             self._tasks_cache = tasks
-            if new_seq is None:
-                current_seq = self._check_changes('0', task_selector)
-                self._tasks_last_seq = current_seq or self._tasks_last_seq
-            else:
-                self._tasks_last_seq = new_seq
+            self._tasks_last_seq = new_seq
             return tasks
         except Exception as e:
             self.logger.error(f"Error fetching tasks: {str(e)}")
             self._tasks_cache = None
             self._tasks_last_seq = '0'
+            raise
+
+    def get_tasks_by_day(self, day: str, include_completed: bool = True) -> List[Dict[str, Any]]:
+        """
+        Fetch tasks scheduled for a specific day.
+        
+        Args:
+            day: The day to fetch tasks for (YYYY-MM-DD)
+            include_completed: Whether to include completed tasks
+            
+        Returns:
+            List of task documents scheduled for the specified day
+        """
+        self.logger.info(f"Fetching tasks for day: {day}")
+        
+        # Base selector for tasks on this day
+        selector = {
+            "db": "Tasks",
+            "day": day
+        }
+        
+        # Add completion filter if needed
+        if not include_completed:
+            selector["$or"] = [
+                {"done": False},
+                {"done": {"$exists": False}}
+            ]
+        
+        try:
+            # We don't use cache for day-specific queries
+            url = f"{self.base_url}/_find"
+            query = {"selector": selector}
+            self.logger.debug(
+                f"Fetching tasks for day {day} with query: {json.dumps(query)}")
+            response = self.session.post(url, json=query)
+            response.raise_for_status()
+            result = response.json()
+            tasks = result.get("docs", [])
+            
+            # Remove fieldUpdates
+            for task in tasks:
+                if "fieldUpdates" in task:
+                    del task["fieldUpdates"]
+            
+            # Sort tasks by completion (incomplete first), then priority, then masterRank
+            tasks.sort(key=lambda t: (
+                t.get("done", False),  # Incomplete first
+                -int(t.get("isStarred", 0)) if t.get("isStarred") else 0,  # Higher priority first
+                -t.get("masterRank", 0)  # Higher rank first
+            ))
+            
+            self.logger.info(f"Successfully fetched {len(tasks)} tasks for day {day}")
+            return tasks
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching tasks for day {day}: {str(e)}")
             raise
 
     def create_task(self, title: str, parent_id: str = "unassigned", day: Optional[str] = None,
