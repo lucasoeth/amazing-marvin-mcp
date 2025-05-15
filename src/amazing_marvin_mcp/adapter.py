@@ -300,6 +300,20 @@ class MarvinAdapter:
 
         return res
 
+    def _process_task_with_completion(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a task into a compact format with a friendly ID and completion status."""
+        # Start with the basic task processing
+        result = self._process_task(task)
+        
+        # Add completion status
+        result["done"] = task.get("done", False)
+        
+        # Add day field if it exists
+        if task.get("day") and task.get("day") != "unassigned":
+            result["day"] = task.get("day")
+            
+        return result
+
     def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
         """Process a category/project into a compact format with a friendly ID."""
         friendly_id = self._get_friendly_project_id(cat["_id"])
@@ -650,3 +664,32 @@ class MarvinAdapter:
         }
 
         return response
+
+    def get_day_tasks(self, day: str) -> Dict[str, Any]:
+        """
+        Get all tasks scheduled for a specific day in YYYY-MM-DD format.
+
+        Args:
+            day: The day to fetch tasks for in YYYY-MM-DD format
+
+        Returns:
+            Dictionary with the date and list of tasks
+            
+        Raises:
+            MarvinAdapterError: If the day format is invalid
+        """
+        # Validate date format
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', day):
+            raise MarvinAdapterError(f"Invalid date format: {day}. Use YYYY-MM-DD format.")
+            
+        # Get tasks for the day from API
+        tasks = self.api.get_tasks_by_day(day)
+        
+        # Process tasks with completion status
+        processed_tasks = [self._process_task_with_completion(task) for task in tasks]
+        
+        # Return simple result
+        return {
+            "date": day,
+            "tasks": processed_tasks
+        }

@@ -10,9 +10,9 @@ from .adapter import (
 from .descriptions import (
     LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
     CREATE_PROJECT_DESCRIPTION, UPDATE_TASK_DESCRIPTION, 
-    SCHEDULE_TASK_DESCRIPTION, 
+    SCHEDULE_TASK_DESCRIPTION, GET_DAY_TASKS_DESCRIPTION,
     LIST_TASKS_SCHEMA, CREATE_TASK_SCHEMA, CREATE_PROJECT_SCHEMA,
-    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA
+    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA, GET_DAY_TASKS_SCHEMA
 )
 
 # Create server
@@ -113,6 +113,24 @@ async def handle_update_task(arguments: dict) -> list[types.TextContent]:
         }
         return [types.TextContent(type="text", text=json.dumps(error_message, indent=2))]
 
+async def handle_get_day_tasks(arguments: dict) -> list[types.TextContent]:
+    """
+    Handle the get_day_tasks tool. Gets all tasks scheduled for a specific day.
+    """
+    day = arguments.get("day", "")
+    
+    try:
+        # Use the adapter to get the day's tasks
+        result = marvin_adapter.get_day_tasks(day=day)
+        
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_message = {
+            "error": str(e),
+            "message": f"Failed to get tasks for day: {day}"
+        }
+        return [types.TextContent(type="text", text=json.dumps(error_message, indent=2))]
+
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     """List available tools."""
@@ -141,6 +159,11 @@ async def handle_list_tools() -> list[types.Tool]:
             name="schedule_task",
             description=SCHEDULE_TASK_DESCRIPTION,
             inputSchema=SCHEDULE_TASK_SCHEMA
+        ),
+        types.Tool(
+            name="get_day_tasks",
+            description=GET_DAY_TASKS_DESCRIPTION,
+            inputSchema=GET_DAY_TASKS_SCHEMA
         )
     ]
 
@@ -160,6 +183,8 @@ async def call_tool(
         return await handle_update_task(arguments)
     elif name == "schedule_task":
         return await handle_schedule_task(arguments)
+    elif name == "get_day_tasks":
+        return await handle_get_day_tasks(arguments)
     else:
         raise ValueError(f"Tool not found: {name}")
 

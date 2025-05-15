@@ -70,6 +70,16 @@ SCHEDULE_TASK_DESCRIPTION = """Schedule a task for a specific day in Amazing Mar
 This tool allows you to specify which day a task should be worked on (as opposed to when it's due).
 """
 
+GET_DAY_TASKS_DESCRIPTION = """Get all tasks scheduled for a specific day.
+
+This tool returns all tasks (both completed and incomplete) that are scheduled for the requested day.
+You can use this to review what tasks are set for a particular date.
+
+Required format for the day parameter is YYYY-MM-DD (e.g., 2025-05-14).
+
+The response includes a list of tasks with their completion status, due dates, time estimates, and priorities.
+"""
+
 # Input schemas for each tool
 LIST_TASKS_SCHEMA = {
     "type": "object",
@@ -177,4 +187,15 @@ SCHEDULE_TASK_SCHEMA = {
         }
     },
     "required": ["task_id", "day"]
+}
+
+GET_DAY_TASKS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "day": {
+            "type": "string",
+            "description": "The day to fetch tasks for in YYYY-MM-DD format (e.g., 2025-05-14)."
+        }
+    },
+    "required": ["day"]
 }
