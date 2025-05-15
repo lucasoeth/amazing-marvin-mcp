@@ -18,3 +18,8 @@ amazing-marvin-mcp = "amazing_marvin_mcp:main"
 
 [tool.uv]
 package = true
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+]
