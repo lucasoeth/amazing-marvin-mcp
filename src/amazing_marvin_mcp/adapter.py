@@ -74,10 +74,14 @@ class MarvinAdapter:
         # Maps real UUIDs to friendly IDs (p1, p2, etc.)
         self._project_id_map = {}
         self._project_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
+        # Maps real UUIDs to friendly IDs (c1, c2, etc.)
+        self._category_id_map = {}
+        self._category_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
         # Maps real UUIDs to friendly IDs (t1, t2, etc.)
         self._task_id_map = {}
         self._task_id_reverse_map = {}  # Maps friendly IDs back to real UUIDs
         self._next_project_id = 1  # Start from p1 (p0 is reserved for Inbox)
+        self._next_category_id = 1  # Start from c1
         self._next_task_id = 1
         
         # Add p0 as a special ID for the Inbox/unassigned
@@ -89,7 +93,7 @@ class MarvinAdapter:
 
     def initialize_id_maps(self):
         """
-        Initialize ID maps deterministically by sorting tasks and projects by createdAt timestamp.
+        Initialize ID maps deterministically by sorting tasks, projects, and categories by createdAt timestamp.
         This ensures consistent ID assignments between sessions.
         """
         self.logger.info("Initializing ID maps deterministically based on createdAt timestamp")
@@ -99,12 +103,23 @@ class MarvinAdapter:
             categories = self.api.get_categories()
             tasks = self.api.get_tasks()
             
+            # Separate categories and projects
+            cat_categories = [c for c in categories if c.get("type") == "category"]
+            cat_projects = [c for c in categories if c.get("type") != "category"]
+            
             # Sort categories by createdAt timestamp (oldest first)
-            sorted_categories = sorted(categories, key=lambda c: c.get('createdAt', 0))
+            sorted_categories = sorted(cat_categories, key=lambda c: c.get('createdAt', 0))
+            
+            # Assign category IDs based on sorted order
+            for category in sorted_categories:
+                self._get_friendly_category_id(category["_id"])
+                
+            # Sort projects by createdAt timestamp (oldest first)
+            sorted_projects = sorted(cat_projects, key=lambda c: c.get('createdAt', 0))
             
             # Assign project IDs based on sorted order
-            for category in sorted_categories:
-                self._get_friendly_project_id(category["_id"])
+            for project in sorted_projects:
+                self._get_friendly_project_id(project["_id"])
                 
             # Sort tasks by createdAt timestamp (oldest first)
             sorted_tasks = sorted(tasks, key=lambda t: t.get('createdAt', 0))
@@ -113,7 +128,7 @@ class MarvinAdapter:
             for task in sorted_tasks:
                 self._get_friendly_task_id(task["_id"])
                 
-            self.logger.info(f"Successfully initialized ID maps with {len(self._project_id_map)} projects and {len(self._task_id_map)} tasks")
+            self.logger.info(f"Successfully initialized ID maps with {len(self._project_id_map)} projects, {len(self._category_id_map)} categories, and {len(self._task_id_map)} tasks")
         except Exception as e:
             self.logger.error(f"Error initializing ID maps: {str(e)}")
             # Continue with empty maps, they will be populated as needed
@@ -148,6 +163,21 @@ class MarvinAdapter:
             self._task_id_reverse_map[friendly_id] = uuid
             self._next_task_id += 1
         return self._task_id_map[uuid]
+
+    def _get_friendly_category_id(self, uuid: str) -> str:
+        """
+        Get a friendly category ID (c1, c2, etc.) for a UUID.
+        If the UUID doesn't have a friendly ID yet, create one.
+        """
+        if not uuid:
+            return ""
+
+        if uuid not in self._category_id_map:
+            friendly_id = f"c{self._next_category_id}"
+            self._category_id_map[uuid] = friendly_id
+            self._category_id_reverse_map[friendly_id] = uuid
+            self._next_category_id += 1
+        return self._category_id_map[uuid]
 
     def get_real_project_id(self, friendly_id: str) -> str:
         """
@@ -194,6 +224,31 @@ class MarvinAdapter:
             return self._task_id_reverse_map[friendly_id]
         else:
             raise InvalidTaskIDError(friendly_id)
+
+    def get_real_category_id(self, friendly_id: str) -> str:
+        """
+        Convert a category friendly ID (c1, c2, etc.) back to the real UUID.
+        
+        Args:
+            friendly_id: A category friendly ID.
+            
+        Returns:
+            The real UUID.
+            
+        Raises:
+            MarvinAdapterError: If friendly_id is invalid.
+        """
+        if not friendly_id:
+            raise MarvinAdapterError("Category ID cannot be empty.")
+            
+        # Category ID must start with c
+        if not friendly_id.startswith('c'):
+            raise MarvinAdapterError(f"Invalid category ID: '{friendly_id}'. Use a valid category ID (c1, c2, etc.)")
+            
+        if friendly_id in self._category_id_reverse_map:
+            return self._category_id_reverse_map[friendly_id]
+        else:
+            raise MarvinAdapterError(f"Invalid category ID: '{friendly_id}'. Use a valid category ID (c1, c2, etc.)")
 
     def parse_time_estimate(self, time_str: str) -> Optional[int]:
         """
@@ -316,8 +371,17 @@ class MarvinAdapter:
 
     def _process_category(self, cat: Dict[str, Any]) -> Dict[str, Any]:
         """Process a category/project into a compact format with a friendly ID."""
-        friendly_id = self._get_friendly_project_id(cat["_id"])
-        data: Dict[str, Any] = {"id": friendly_id}
+        is_category = cat.get("type") == "category"
+        
+        if is_category:
+            friendly_id = self._get_friendly_category_id(cat["_id"])
+        else:
+            friendly_id = self._get_friendly_project_id(cat["_id"])
+            
+        data: Dict[str, Any] = {
+            "id": friendly_id,
+            "type": "category" if is_category else "project"
+        }
 
         if cat.get("priority"):
             data["pri"] = cat["priority"]
@@ -348,40 +412,57 @@ class MarvinAdapter:
         inbox_tasks = [t for t in tasks if t.get("parentId") == "unassigned"]
 
         # Build the hierarchy with compact entries
-        def process_category_recursive(category: Dict[str, Any]) -> Dict[str, Any]:
-            cid = category["_id"]
-            cdata = self._process_category(category)
+        def process_category_recursive(item: Dict[str, Any]) -> Dict[str, Any]:
+            item_id = item["_id"]
+            is_category = item.get("type") == "category"
+            item_data = self._process_category(item)
 
-            # Add tasks
-            tlist = [self._process_task(t)
-                     for t in tasks if t.get("parentId") == cid]
-            if tlist:
-                cdata["tasks"] = tlist
+            # Add tasks only if this is not a category (only projects can contain tasks)
+            if not is_category:
+                tlist = [self._process_task(t)
+                        for t in tasks if t.get("parentId") == item_id]
+                if tlist:
+                    item_data["tasks"] = tlist
 
-            # Add subcategories
-            subs = [c for c in categories if c.get("parentId") == cid]
+            # Add subcategories and subprojects
+            subs = [c for c in categories if c.get("parentId") == item_id]
+            
             if subs:
-                cdata["sub"] = {
-                    s.get("title", "Untitled"): process_category_recursive(s) for s in subs}
+                item_data["sub"] = {}
+                
+                # Process all sub-items
+                for sub in subs:
+                    sub_title = sub.get("title", "Untitled")
+                    sub_type = "Category" if sub.get("type") == "category" else "Project"
+                    display_title = f"[{sub_type[0]}] {sub_title}"  # [C] for Category, [P] for Project
+                    item_data["sub"][display_title] = process_category_recursive(sub)
 
-            return cdata
+            return item_data
 
         hierarchy = {}
 
         # Add synthetic Inbox for categories and tasks with parentId 'unassigned'
         if inbox_categories or inbox_tasks:
-            inbox_dict = {"id": "p0"}  # Assign p0 ID to the Inbox
+            inbox_dict = {"id": "p0", "type": "project"}  # Assign p0 ID to the Inbox
             if inbox_categories:
-                inbox_dict["sub"] = {cat.get("title", "Untitled Category"): process_category_recursive(
-                    cat) for cat in inbox_categories}
+                inbox_dict["sub"] = {}
+                for cat in inbox_categories:
+                    cat_title = cat.get("title", "Untitled Category")
+                    cat_type = "Category" if cat.get("type") == "category" else "Project"
+                    display_title = f"[{cat_type[0]}] {cat_title}"
+                    inbox_dict["sub"][display_title] = process_category_recursive(cat)
+            
             if inbox_tasks:
                 inbox_dict["tasks"] = [
                     self._process_task(t) for t in inbox_tasks]
             hierarchy["Inbox"] = inbox_dict
 
-
-        hierarchy.update({rc.get("title", "Untitled Category"): process_category_recursive(
-            rc) for rc in root_categories})
+        # Add root categories/projects with type prefixes
+        for rc in root_categories:
+            rc_title = rc.get("title", "Untitled")
+            rc_type = "Category" if rc.get("type") == "category" else "Project"
+            display_title = f"[{rc_type[0]}] {rc_title}"
+            hierarchy[display_title] = process_category_recursive(rc)
 
         return hierarchy
 
@@ -534,7 +615,7 @@ class MarvinAdapter:
 
         Args:
             title: The title of the category
-            parent_id: Friendly ID (p1) for the parent category/project
+            parent_id: Friendly ID (p1 or c1) for the parent category/project
             due_date: Optional due date for the category (YYYY-MM-DD)
             priority: Optional priority level (1-3, with 3 being highest)
 
@@ -548,12 +629,16 @@ class MarvinAdapter:
             raise MarvinAdapterError("Category title cannot be empty")
             
         # Convert parent_id from friendly ID to real ID
-        real_parent_id = parent_id
+        real_parent_id = "root"
         if parent_id:
-            real_parent_id = self.get_real_project_id(parent_id)
-        else:
-            # If no parent_id is provided, create at root level
-            real_parent_id = "root"
+            if parent_id.startswith('c'):
+                # Parent is a category
+                real_parent_id = self.get_real_category_id(parent_id)
+            elif parent_id.startswith('p'):
+                # Parent is a project
+                real_parent_id = self.get_real_project_id(parent_id)
+            else:
+                raise MarvinAdapterError(f"Invalid parent ID: '{parent_id}'. Must start with 'c' for categories or 'p' for projects.")
 
         # Validate priority if provided
         if priority and priority not in ["1", "2", "3", 1, 2, 3]:
@@ -569,7 +654,7 @@ class MarvinAdapter:
 
         # Get the category ID and assign a friendly ID
         category_id = api_result.get("id", "")
-        friendly_id = self._get_friendly_project_id(category_id)
+        friendly_id = self._get_friendly_category_id(category_id)
 
         # Return LLM-friendly result
         return {
