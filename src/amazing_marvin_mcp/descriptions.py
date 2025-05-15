@@ -5,33 +5,24 @@ This module contains detailed descriptions of the tools available in the MCP ser
 including input schemas and explanations of return values.
 """
 
-LIST_TASKS_DESCRIPTION = """Get the hierarchical structure of projects, categories, and tasks from Amazing Marvin.
+LIST_TASKS_DESCRIPTION = """Get the hierarchical structure of projects and tasks from Amazing Marvin.
             
 The output structure uses the following abbreviations:
 - "t": Title of the task
 - "due": Due date (YYYY-MM-DD)
 - "est": Time estimate (e.g., "30m" for 30 minutes, "2h" for 2 hours)
 - "pri": Priority level (1-3, with 3 being highest priority)
-- "sub": Sub-items (categories or projects) contained within this item
-- "tasks": List of tasks within a project
-- "id": Friendly ID for referencing this item (e.g., "t1" for tasks, "p1" for projects, "c1" for categories)
-- "type": Type of the container item ("project" or "category")
+- "sub": Subprojects contained within this project
+- "tasks": List of tasks within this project
+- "id": Friendly ID for referencing this task or project (e.g., "t1" for tasks, "p1" for projects)
 
-To refer to a specific item in other API calls, use these friendly IDs.
-Tasks are identified as "t1", "t2", etc.
-Projects are identified as "p1", "p2", etc.
-Categories are identified as "c1", "c2", etc.
-
-Projects can contain tasks, while categories cannot directly contain tasks.
-Both projects and categories can contain sub-projects and sub-categories.
-
-Items in the hierarchy are prefixed with [C] for categories and [P] for projects to visually distinguish them.
+To refer to a specific task or project in other API calls, use these friendly IDs.
+Tasks are identified as "t1", "t2", etc. and projects as "p1", "p2", etc.
 
 Example output structure:
 {
-  "[P] Project A": {
+  "Project A": {
     "id": "p1",
-    "type": "project",
     "pri": 3,
     "due": "2025-05-01",
     "tasks": [
@@ -39,28 +30,16 @@ Example output structure:
       {"t": "Task 2", "id": "t2", "est": "30m"}
     ],
     "sub": {
-      "[P] Subproject 1": {
+      "Subproject 1": {
         "id": "p2",
-        "type": "project",
         "tasks": [
           {"t": "Subtask 1", "id": "t3", "due": "2025-04-22"}
         ]
-      },
-      "[C] Organization Category": {
-        "id": "c1",
-        "type": "category",
-        "sub": {
-          "[P] Nested Project": {
-            "id": "p3",
-            "type": "project"
-          }
-        }
       }
     }
   },
   "Inbox": {
-    "id": "p0",
-    "type": "project",
+    "id": "p3",
     "tasks": [
       {"t": "Unsorted task", "id": "t4", "est": "1h"}
     ]
@@ -105,16 +84,14 @@ CREATE_CATEGORY_DESCRIPTION = """Create a new category in Amazing Marvin.
 
 Categories are static folders that organize projects and tasks into logical groups.
 They represent areas of responsibility or life domains like "Work", "Health", or "Household".
-You can nest categories within other categories or place them within projects to create a hierarchical structure.
-
-Unlike projects, categories cannot directly contain tasks.
+You can nest categories within other categories to create a hierarchical structure.
 
 Example uses:
 - Creating main areas of responsibility like "Work" or "Health"
 - Organizing projects into logical groups
 - Creating a hierarchical structure for your tasks
 
-The response includes the created category information and its new ID, which will be in the format "c1", "c2", etc.
+The response includes the created category information and its new ID.
 """
 
 # Input schemas for each tool
@@ -246,9 +223,8 @@ CREATE_CATEGORY_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": """Optional ID of the parent category or project where the category should be created. 
-  * For parent projects, use format "p1", "p2", etc.
-  * For parent categories, use format "c1", "c2", etc.
+            "description": """Optional ID of the parent category or project (e.g., "p1", "p2") where the category should be created. 
+  * Must be a valid project/category ID in the format "p1", "p2", etc.
   * If this parameter is not provided, the category will be created at the root level.
 """
         },
