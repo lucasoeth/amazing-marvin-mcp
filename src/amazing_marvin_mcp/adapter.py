@@ -844,9 +844,10 @@ class MarvinAdapter:
         
         # Process tasks with completion status
         processed_tasks = [self._process_task_with_completion(task) for task in tasks]
-        
-        # Return simple result
-        return {
-            "date": day,
-            "tasks": processed_tasks
-        }
+
+        if processed_tasks:
+            day_tasks_str = "[\n  " + ",\n  ".join([json.dumps(t) for t in processed_tasks]) + "\n]"
+            # Return simple result
+            return day_tasks_str
+        else:
+            return "[]"

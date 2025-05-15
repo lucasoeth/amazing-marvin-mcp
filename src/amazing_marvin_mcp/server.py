@@ -123,9 +123,9 @@ async def handle_get_day_tasks(arguments: dict) -> list[types.TextContent]:
     
     try:
         # Use the adapter to get the day's tasks
-        result = marvin_adapter.get_day_tasks(day=day)
+        day_tasks_str = marvin_adapter.get_day_tasks(day=day)
         
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [types.TextContent(type="text", text=day_tasks_str)]
     except Exception as e:
         error_message = {
             "error": str(e),
