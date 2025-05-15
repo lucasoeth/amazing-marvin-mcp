@@ -527,6 +527,62 @@ class MarvinAdapter:
             "message": f"Project '{title}' created successfully with ID {friendly_id}"
         }
 
+    def create_category(self, title: str, parent_id: str,
+                      due_date: Optional[str] = None, priority: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new category with LLM-friendly parameters.
+
+        Args:
+            title: The title of the category
+            parent_id: Friendly ID (p1) for the parent category/project
+            due_date: Optional due date for the category (YYYY-MM-DD)
+            priority: Optional priority level (1-3, with 3 being highest)
+
+        Returns:
+            Dictionary with the created category info and its friendly ID
+            
+        Raises:
+            MarvinAdapterError: If any parameters are invalid
+        """
+        if not title:
+            raise MarvinAdapterError("Category title cannot be empty")
+            
+        # Convert parent_id from friendly ID to real ID
+        real_parent_id = parent_id
+        if parent_id:
+            real_parent_id = self.get_real_project_id(parent_id)
+        else:
+            # If no parent_id is provided, create at root level
+            real_parent_id = "root"
+
+        # Validate priority if provided
+        if priority and priority not in ["1", "2", "3", 1, 2, 3]:
+            raise MarvinAdapterError(f"Invalid priority value: {priority}. Must be 1, 2, or 3 (with 3 being highest).")
+
+        # Create the category using the API
+        api_result = self.api.create_category(
+            title=title,
+            parent_id=real_parent_id,
+            due_date=due_date,
+            priority=priority
+        )
+
+        # Get the category ID and assign a friendly ID
+        category_id = api_result.get("id", "")
+        friendly_id = self._get_friendly_project_id(category_id)
+
+        # Return LLM-friendly result
+        return {
+            "category": {
+                "title": title,
+                "id": friendly_id,
+                "parent_id": parent_id if parent_id else "root",
+                "due_date": due_date,
+                "priority": priority
+            },
+            "message": f"Category '{title}' created successfully with ID {friendly_id}"
+        }
+
     def update_task(self, task_id: str, title: Optional[str] = None, parent_id: Optional[str] = None, 
                    due_date: Optional[str] = None, time_estimate: Optional[str] = None, 
                    priority: Optional[str] = None) -> Dict[str, Any]:

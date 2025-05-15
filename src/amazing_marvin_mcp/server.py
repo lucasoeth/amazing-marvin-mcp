@@ -11,8 +11,10 @@ from .descriptions import (
     LIST_TASKS_DESCRIPTION, CREATE_TASK_DESCRIPTION, 
     CREATE_PROJECT_DESCRIPTION, UPDATE_TASK_DESCRIPTION, 
     SCHEDULE_TASK_DESCRIPTION, GET_DAY_TASKS_DESCRIPTION,
+    CREATE_CATEGORY_DESCRIPTION,
     LIST_TASKS_SCHEMA, CREATE_TASK_SCHEMA, CREATE_PROJECT_SCHEMA,
-    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA, GET_DAY_TASKS_SCHEMA
+    UPDATE_TASK_SCHEMA, SCHEDULE_TASK_SCHEMA, GET_DAY_TASKS_SCHEMA,
+    CREATE_CATEGORY_SCHEMA
 )
 
 # Create server
@@ -131,6 +133,31 @@ async def handle_get_day_tasks(arguments: dict) -> list[types.TextContent]:
         }
         return [types.TextContent(type="text", text=json.dumps(error_message, indent=2))]
 
+async def handle_create_category(arguments: dict) -> list[types.TextContent]:
+    """
+    Handle the create_category tool. Creates a new category in Amazing Marvin.
+    """
+    title = arguments.get("title", "")
+    parent_id = arguments.get("parent_id", "") 
+    due_date = arguments.get("due_date", None)
+    priority = arguments.get("priority", None)
+    
+    # Use the adapter to create the category with LLM-friendly parameters
+    try:
+        result = marvin_adapter.create_category(
+            title=title,
+            parent_id=parent_id,
+            due_date=due_date,
+            priority=priority
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+    except Exception as e:
+        error_message = {
+            "error": str(e),
+            "message": "Failed to create category"
+        }
+        return [types.TextContent(type="text", text=json.dumps(error_message, indent=2))]
+
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     """List available tools."""
@@ -164,6 +191,11 @@ async def handle_list_tools() -> list[types.Tool]:
             name="get_day_tasks",
             description=GET_DAY_TASKS_DESCRIPTION,
             inputSchema=GET_DAY_TASKS_SCHEMA
+        ),
+        types.Tool(
+            name="create_category",
+            description=CREATE_CATEGORY_DESCRIPTION,
+            inputSchema=CREATE_CATEGORY_SCHEMA
         )
     ]
 
@@ -185,6 +217,8 @@ async def call_tool(
         return await handle_schedule_task(arguments)
     elif name == "get_day_tasks":
         return await handle_get_day_tasks(arguments)
+    elif name == "create_category":
+        return await handle_create_category(arguments)
     else:
         raise ValueError(f"Tool not found: {name}")
 

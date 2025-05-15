@@ -80,6 +80,20 @@ Required format for the day parameter is YYYY-MM-DD (e.g., 2025-05-14).
 The response includes a list of tasks with their completion status, due dates, time estimates, and priorities.
 """
 
+CREATE_CATEGORY_DESCRIPTION = """Create a new category in Amazing Marvin.
+
+Categories are static folders that organize projects and tasks into logical groups.
+They represent areas of responsibility or life domains like "Work", "Health", or "Household".
+You can nest categories within other categories to create a hierarchical structure.
+
+Example uses:
+- Creating main areas of responsibility like "Work" or "Health"
+- Organizing projects into logical groups
+- Creating a hierarchical structure for your tasks
+
+The response includes the created category information and its new ID.
+"""
+
 # Input schemas for each tool
 LIST_TASKS_SCHEMA = {
     "type": "object",
@@ -198,4 +212,30 @@ GET_DAY_TASKS_SCHEMA = {
         }
     },
     "required": ["day"]
+}
+
+CREATE_CATEGORY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "The title of the category"
+        },
+        "parent_id": {
+            "type": "string",
+            "description": """Optional ID of the parent category or project (e.g., "p1", "p2") where the category should be created. 
+  * Must be a valid project/category ID in the format "p1", "p2", etc.
+  * If this parameter is not provided, the category will be created at the root level.
+"""
+        },
+        "due_date": {
+            "type": "string",
+            "description": "Optional due date for the category (YYYY-MM-DD)"
+        },
+        "priority": {
+            "type": "string",
+            "description": "Optional priority level (1-3, with 3 being highest)"
+        }
+    },
+    "required": ["title"]
 }

@@ -466,6 +466,71 @@ class MarvinAPI:
             self.logger.error(f"Error creating project: {str(e)}")
             raise
     
+    def create_category(self, title: str, parent_id: str = "root",
+                       due_date: Optional[str] = None, priority: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new category directly in the CouchDB database.
+        
+        Args:
+            title: The title of the category
+            parent_id: ID of the parent category/project, defaults to "root" (top-level)
+            due_date: Optional due date for the category (YYYY-MM-DD)
+            priority: Optional priority level (1-3 with 3 being highest)
+            
+        Returns:
+            The created category document
+        """
+        self.logger.info(f"Creating new category: {title}")
+
+        current_time = int(time.time()*1000)
+
+        # Fetch all categories to determine rank/masterRank
+        all_categories = self.get_categories()
+        # rank: max rank among all categories + 1
+        max_rank = max(
+            (c.get("rank", 0) for c in all_categories if isinstance(
+                c.get("rank", 0), (int, float))),
+            default=0
+        )
+        new_rank = max_rank + 1
+
+        # masterRank: max masterRank among categories in the same parent + 1
+        parent_categories = [c for c in all_categories if c.get("parentId") == parent_id]
+        max_master_rank = max(
+            (c.get("masterRank", 0) for c in parent_categories if isinstance(
+                c.get("masterRank", 0), (int, float))),
+            default=0
+        )
+        new_master_rank = max_master_rank + 1
+
+        # Create the category document
+        category = {
+            "db": "Categories",
+            "type": "category",  # This is the key difference from projects
+            "title": title,
+            "parentId": parent_id,
+            "createdAt": current_time,
+            "updatedAt": current_time,
+            "rank": new_rank,
+            "masterRank": new_master_rank
+        }
+
+        # Add optional fields
+        if due_date:
+            category["dueDate"] = due_date
+        if priority:
+            category["priority"] = priority
+
+        # Insert the document into CouchDB
+        try:
+            response = self.session.post(self.base_url, json=category)
+            response.raise_for_status()
+            self.logger.info(f"Successfully created category: {title}")
+            return response.json()
+        except Exception as e:
+            self.logger.error(f"Error creating category: {str(e)}")
+            raise
+
     def update_task(self, task_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update an existing task directly in the CouchDB database.
