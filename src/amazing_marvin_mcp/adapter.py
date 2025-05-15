@@ -379,8 +379,7 @@ class MarvinAdapter:
             friendly_id = self._get_friendly_project_id(cat["_id"])
             
         data: Dict[str, Any] = {
-            "id": friendly_id,
-            "type": "category" if is_category else "project"
+            "id": friendly_id
         }
 
         if cat.get("priority"):
@@ -414,15 +413,13 @@ class MarvinAdapter:
         # Build the hierarchy with compact entries
         def process_category_recursive(item: Dict[str, Any]) -> Dict[str, Any]:
             item_id = item["_id"]
-            is_category = item.get("type") == "category"
             item_data = self._process_category(item)
 
-            # Add tasks only if this is not a category (only projects can contain tasks)
-            if not is_category:
-                tlist = [self._process_task(t)
-                        for t in tasks if t.get("parentId") == item_id]
-                if tlist:
-                    item_data["tasks"] = tlist
+            # Add tasks for both projects and categories
+            tlist = [self._process_task(t)
+                    for t in tasks if t.get("parentId") == item_id]
+            if tlist:
+                item_data["tasks"] = tlist
 
             # Add subcategories and subprojects
             subs = [c for c in categories if c.get("parentId") == item_id]
@@ -433,9 +430,7 @@ class MarvinAdapter:
                 # Process all sub-items
                 for sub in subs:
                     sub_title = sub.get("title", "Untitled")
-                    sub_type = "Category" if sub.get("type") == "category" else "Project"
-                    display_title = f"[{sub_type[0]}] {sub_title}"  # [C] for Category, [P] for Project
-                    item_data["sub"][display_title] = process_category_recursive(sub)
+                    item_data["sub"][sub_title] = process_category_recursive(sub)
 
             return item_data
 
@@ -443,26 +438,22 @@ class MarvinAdapter:
 
         # Add synthetic Inbox for categories and tasks with parentId 'unassigned'
         if inbox_categories or inbox_tasks:
-            inbox_dict = {"id": "p0", "type": "project"}  # Assign p0 ID to the Inbox
+            inbox_dict = {"id": "p0"}  # Assign p0 ID to the Inbox
             if inbox_categories:
                 inbox_dict["sub"] = {}
                 for cat in inbox_categories:
                     cat_title = cat.get("title", "Untitled Category")
-                    cat_type = "Category" if cat.get("type") == "category" else "Project"
-                    display_title = f"[{cat_type[0]}] {cat_title}"
-                    inbox_dict["sub"][display_title] = process_category_recursive(cat)
+                    inbox_dict["sub"][cat_title] = process_category_recursive(cat)
             
             if inbox_tasks:
                 inbox_dict["tasks"] = [
                     self._process_task(t) for t in inbox_tasks]
             hierarchy["Inbox"] = inbox_dict
 
-        # Add root categories/projects with type prefixes
+        # Add root categories/projects
         for rc in root_categories:
             rc_title = rc.get("title", "Untitled")
-            rc_type = "Category" if rc.get("type") == "category" else "Project"
-            display_title = f"[{rc_type[0]}] {rc_title}"
-            hierarchy[display_title] = process_category_recursive(rc)
+            hierarchy[rc_title] = process_category_recursive(rc)
 
         return hierarchy
 
@@ -509,7 +500,7 @@ class MarvinAdapter:
 
         Args:
             title: The title of the task
-            parent_id: Friendly ID (p1) for the parent project
+            parent_id: Friendly ID (p1 or c1) for the parent project or category
             due_date: Optional due date for the task (YYYY-MM-DD)
             time_estimate: Optional time estimate in human format (e.g., "30m", "1.5h")
             priority: Optional priority level (1-3, with 3 being highest)
@@ -524,7 +515,16 @@ class MarvinAdapter:
             raise MarvinAdapterError("Task title cannot be empty")
             
         # Convert parent_id from friendly ID to real ID
-        real_parent_id = self.get_real_project_id(parent_id)
+        real_parent_id = "unassigned"
+        if parent_id:
+            if parent_id.startswith('c'):
+                # Parent is a category
+                real_parent_id = self.get_real_category_id(parent_id)
+            elif parent_id.startswith('p'):
+                # Parent is a project
+                real_parent_id = self.get_real_project_id(parent_id)
+            else:
+                raise MarvinAdapterError(f"Invalid parent ID: '{parent_id}'. Must start with 'c' for categories or 'p' for projects.")
 
         # Convert time estimate from human-readable to milliseconds
         time_ms = None
@@ -568,7 +568,7 @@ class MarvinAdapter:
 
         Args:
             title: The title of the project
-            parent_id: Friendly ID (p1) for the parent project
+            parent_id: Friendly ID (p1 or c1) for the parent project or category
             due_date: Optional due date for the project (YYYY-MM-DD)
             priority: Optional priority level (1-3, with 3 being highest)
 
@@ -582,7 +582,16 @@ class MarvinAdapter:
             raise MarvinAdapterError("Project title cannot be empty")
             
         # Convert parent_id from friendly ID to real ID
-        real_parent_id = self.get_real_project_id(parent_id)
+        real_parent_id = "root"
+        if parent_id:
+            if parent_id.startswith('c'):
+                # Parent is a category
+                real_parent_id = self.get_real_category_id(parent_id)
+            elif parent_id.startswith('p'):
+                # Parent is a project
+                real_parent_id = self.get_real_project_id(parent_id)
+            else:
+                raise MarvinAdapterError(f"Invalid parent ID: '{parent_id}'. Must start with 'c' for categories or 'p' for projects.")
 
         # Create the project using the API
         api_result = self.api.create_project(
@@ -714,7 +723,14 @@ class MarvinAdapter:
         # Handle parent_id if provided
         if parent_id is not None:
             if parent_id:
-                real_parent_id = self.get_real_project_id(parent_id)
+                if parent_id.startswith('c'):
+                    # Parent is a category
+                    real_parent_id = self.get_real_category_id(parent_id)
+                elif parent_id.startswith('p'):
+                    # Parent is a project
+                    real_parent_id = self.get_real_project_id(parent_id) 
+                else:
+                    raise MarvinAdapterError(f"Invalid parent ID: '{parent_id}'. Must start with 'c' for categories or 'p' for projects.")
                 api_updates["parentId"] = real_parent_id
             else:
                 api_updates["parentId"] = "unassigned"

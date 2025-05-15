@@ -5,19 +5,24 @@ This module contains detailed descriptions of the tools available in the MCP ser
 including input schemas and explanations of return values.
 """
 
-LIST_TASKS_DESCRIPTION = """Get the hierarchical structure of projects and tasks from Amazing Marvin.
+LIST_TASKS_DESCRIPTION = """Get the hierarchical structure of projects, categories, and tasks from Amazing Marvin.
             
 The output structure uses the following abbreviations:
 - "t": Title of the task
 - "due": Due date (YYYY-MM-DD)
 - "est": Time estimate (e.g., "30m" for 30 minutes, "2h" for 2 hours)
 - "pri": Priority level (1-3, with 3 being highest priority)
-- "sub": Subprojects contained within this project
-- "tasks": List of tasks within this project
-- "id": Friendly ID for referencing this task or project (e.g., "t1" for tasks, "p1" for projects)
+- "sub": Subcategories or subprojects contained within this project or category
+- "tasks": List of tasks within this project or category
+- "id": Friendly ID for referencing this task, project, or category
 
-To refer to a specific task or project in other API calls, use these friendly IDs.
-Tasks are identified as "t1", "t2", etc. and projects as "p1", "p2", etc.
+To refer to items in other API calls, use these friendly IDs:
+- Tasks are identified as "t1", "t2", etc.
+- Projects are identified as "p1", "p2", etc.
+- Categories are identified as "c1", "c2", etc.
+
+Projects are actionable multi-step items that can be completed.
+Categories are static organizational folders used for grouping and long-term organization.
 
 Example output structure:
 {
@@ -35,11 +40,25 @@ Example output structure:
         "tasks": [
           {"t": "Subtask 1", "id": "t3", "due": "2025-04-22"}
         ]
+      },
+      "Category 1": {
+        "id": "c1",
+        "tasks": [
+          {"t": "Category task", "id": "t5", "est": "30m"}
+        ],
+        "sub": {
+          "Nested Project": {
+            "id": "p3",
+            "tasks": [
+              {"t": "Nested task", "id": "t6", "est": "45m"}
+            ]
+          }
+        }
       }
     }
   },
   "Inbox": {
-    "id": "p3",
+    "id": "p0",
     "tasks": [
       {"t": "Unsorted task", "id": "t4", "est": "1h"}
     ]
@@ -55,8 +74,9 @@ Priority can be set from 1-3, with 3 being the highest priority.
 
 CREATE_PROJECT_DESCRIPTION = """Create a new project in Amazing Marvin.
 
-You can create projects with various properties and place them within other projects using IDs.
-Projects can contain tasks and other subprojects.
+You can create projects with various properties and place them within other projects or categories.
+Projects can contain tasks and can also contain other subprojects.
+Use projects for actionable multi-step items that require completion.
 """
 
 UPDATE_TASK_DESCRIPTION = """Update an existing task in Amazing Marvin.
@@ -86,6 +106,11 @@ Categories are static folders that organize projects and tasks into logical grou
 They represent areas of responsibility or life domains like "Work", "Health", or "Household".
 You can nest categories within other categories to create a hierarchical structure.
 
+Categories:
+- Can contain tasks, projects, and other categories
+- Are identified by IDs starting with "c" (c1, c2, etc.)
+- Are meant for long-term organization
+
 Example uses:
 - Creating main areas of responsibility like "Work" or "Health"
 - Organizing projects into logical groups
@@ -110,8 +135,8 @@ CREATE_TASK_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": """Optional ID of the parent project (e.g., "p1", "p2") where the task should be created. 
-  * Must be a valid project ID in the format "p1", "p2", etc.
+            "description": """Optional ID of the parent project or category where the task should be created. 
+  * Can be either a project ID ("p1", "p2", etc.) or a category ID ("c1", "c2", etc.)
   * If this parameter is not provided, the task will be created in the Inbox.
 """
         },
@@ -140,9 +165,9 @@ CREATE_PROJECT_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": """Optional ID of the parent project (e.g., "p1", "p2") where the task should be created. 
-  * Must be a valid project ID in the format "p1", "p2", etc.
-  * If this parameter is not provided, the task will be created in the Inbox.
+            "description": """Optional ID of the parent project or category where the project should be created. 
+  * Can be either a project ID ("p1", "p2", etc.) or a category ID ("c1", "c2", etc.)
+  * If this parameter is not provided, the project will be created at the root level.
 """
         },
         "due_date": {
@@ -170,7 +195,7 @@ UPDATE_TASK_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": "New parent project friendly ID (p1, p2, etc.)"
+            "description": "New parent project or category friendly ID (p1, p2, etc. or c1, c2, etc.)"
         },
         "due_date": {
             "type": "string",
@@ -223,8 +248,8 @@ CREATE_CATEGORY_SCHEMA = {
         },
         "parent_id": {
             "type": "string",
-            "description": """Optional ID of the parent category or project (e.g., "p1", "p2") where the category should be created. 
-  * Must be a valid project/category ID in the format "p1", "p2", etc.
+            "description": """Optional ID of the parent category or project where the category should be created. 
+  * Can be either a project ID ("p1", "p2", etc.) or a category ID ("c1", "c2", etc.)
   * If this parameter is not provided, the category will be created at the root level.
 """
         },
