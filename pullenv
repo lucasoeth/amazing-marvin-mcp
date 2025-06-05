@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Configuration
+VAULT_ID="5a4b7150-fce0-4dba-b77b-b2f3009c39e3"
+ENV_FILE=".env"
+
+# Check if .env file exists, create if it doesn't
+if [ ! -f "$ENV_FILE" ]; then
+    touch "$ENV_FILE"
+    echo "Created $ENV_FILE file"
+fi
+
+# Get secrets from Bitwarden in env format
+echo "Fetching secrets from Bitwarden..."
+BWS_OUTPUT=$(bws secret list "$VAULT_ID" -o env)
+
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to fetch secrets from Bitwarden"
+    exit 1
+fi
+
+# Create a temporary file for the new .env content
+TEMP_FILE=$(mktemp)
+
+# Copy existing .env to temp file
+cp "$ENV_FILE" "$TEMP_FILE"
+
+# Process each line from Bitwarden output
+while IFS= read -r line; do
+    # Skip empty lines
+    if [ -z "$line" ]; then
+        continue
+    fi
+    
+    # Extract key and value
+    KEY=$(echo "$line" | cut -d'=' -f1)
+    VALUE=$(echo "$line" | cut -d'=' -f2-)
+    
+    # Check if key exists in .env file
+    if grep -q "^$KEY=" "$TEMP_FILE"; then
+        # Replace existing key
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS sed syntax
+            sed -i '' "s|^$KEY=.*|$line|" "$TEMP_FILE"
+        else
+            # Linux sed syntax
+            sed -i "s|^$KEY=.*|$line|" "$TEMP_FILE"
+        fi
+        echo "Updated: $KEY"
+    else
+        # Add new key
+        echo "$line" >> "$TEMP_FILE"
+        echo "Added: $KEY"
+    fi
+done <<< "$BWS_OUTPUT"
+
+# Replace original .env file
+mv "$TEMP_FILE" "$ENV_FILE"
+
+echo "Successfully updated $ENV_FILE"
